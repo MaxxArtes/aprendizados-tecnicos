@@ -8,9 +8,26 @@ apareceu erro".
 **Causa:** falha silenciosa é o modo de falha padrão de job agendado — quem não roda também
 não avisa. E o agendador só registra o código de saída, que ninguém olha.
 
+**O que é "falha silenciosa", e por que ela é o padrão:** um job agendado não tem plateia. Se
+ele termina bem, ninguém olha; se ele termina mal, também ninguém olha — a menos que alguém
+tenha construído o canal de aviso. Um job que simplesmente **deixou de ser disparado** é ainda
+pior: não gera nem log nem código de saída, porque não houve execução alguma.
+
+**Exemplo concreto:** um backup noturno roda às 3h. Em janeiro o disco de destino ficou
+indisponível e o script morreu no segundo passo. Em março alguém precisa restaurar um arquivo
+e descobre que o backup mais recente é de dezembro — três meses de nada, sem um único alerta.
+
 **Regra:** toda rodada grava um arquivo de status com timestamp, resultado e causa da
 falha, e sai com código diferente de zero quando falha. O check de saúde vira "a data
 avançou?" em vez de "achei algum erro?".
+
+```json
+{"tarefa": "backup-noturno", "fim": "2026-03-14T03:12:00Z",
+ "status": "erro", "causa": "destino inacessivel", "itens": 0}
+```
+
+Ler esse arquivo custa dois segundos, e a pergunta "a data de `fim` é de hoje?" é respondível
+por qualquer pessoa, inclusive por outro script.
 
 ---
 
@@ -22,6 +39,11 @@ avançou?" em vez de "achei algum erro?".
 credencial derruba tudo que compartilha o mesmo segredo, simultaneamente e com mensagem
 idêntica.
 
+**Exemplo concreto:** numa segunda-feira, oito extrações falham entre 2h e 5h. A primeira
+suspeita é queda de rede, e alguém abre chamado com a infraestrutura. Os oito tracebacks
+trazem exatamente a mesma linha de login recusado: a senha do sistema de origem venceu no fim
+de semana. Trinta segundos de leitura teriam poupado o chamado.
+
 **Regra:** antes de investigar rede, runner ou banco, leia o traceback de **um** job. Se
 todos têm a mesma mensagem de login, é credencial. Se os jobs equivalentes em outro
 ambiente (que usa outro segredo) seguem verdes, isso confirma.
@@ -31,6 +53,11 @@ ambiente (que usa outro segredo) seguem verdes, isso confirma.
 ## Teste a tarefa agendada **pelo agendador**, não pelo seu terminal
 
 **Causa:** rodar pelo agendador usa outro usuário, outro ambiente e outras permissões.
+
+**Exemplo concreto:** o script de exportação roda perfeito no seu terminal — onde você já está
+autenticado, o diretório de trabalho é o do projeto e uma variável de ambiente vem do seu
+perfil de shell. Agendado, ele roda como conta de serviço, num diretório diferente, sem esse
+perfil, e morre na primeira linha que lê a variável.
 
 **Regra:** dispare manualmente pelo agendador e confirme o resultado. É o único teste que
 vale. Tarefa nunca executada é exatamente o tipo de coisa que falha em silêncio na
@@ -47,6 +74,10 @@ dado bom que já existia.
 — por token revogado, filtro errado ou API instável — o resultado é apagar tudo e não
 escrever nada.
 
+**Exemplo concreto:** a sincronização diária de um catálogo apaga a tabela de produtos e
+reimporta os 5.000 itens da API de origem. Num dia a API responde 200 com lista vazia. O
+script apaga os 5.000 e insere zero, sem erro nenhum. A loja abre vazia.
+
 **Regra:** antes de sobrescrever, valide que a origem devolveu algo plausível. Resposta
 vazia com sucesso HTTP é um caso a tratar explicitamente: aborte sem tocar no destino.
 
@@ -59,6 +90,24 @@ resultado for destino zerado, o desenho está errado.
 
 **Sintoma:** uma execução com rede instável troca um backup íntegro por um corrompido.
 Você só descobre no dia em que precisa restaurar.
+
+**Exemplo concreto:** o job noturno escreve direto por cima de `backup.zip`. Numa noite a rede
+cai na metade da transferência. O arquivo existe, tem tamanho plausível e está truncado — e o
+backup bom da véspera já não existe mais.
+
+```mermaid
+flowchart TD
+    A[Gerar saida em<br/>arquivo temporario] --> B{Formato e tamanho<br/>estao ok?}
+    B -->|falhou| C[Apagar o temporario]
+    C --> D[Arquivo bom antigo<br/>continua intacto]
+    B -->|passou| E[Substituir de<br/>forma atomica]
+    E --> F[O arquivo bom<br/>agora e o novo]
+```
+
+**O que "atomicamente" quer dizer aqui:** renomear um arquivo por cima de outro, dentro do
+mesmo volume, é uma operação que o sistema de arquivos conclui de uma vez só — não existe
+instante em que o destino esteja pela metade. Copiar por cima **não** tem essa garantia: se o
+processo morre no meio da cópia, o destino fica quebrado.
 
 **Regra:** grave como arquivo temporário, valide o formato, e só então substitua
 atomicamente. Se a validação falhar, apague o temporário e mantenha o antigo — melhor um
@@ -74,6 +123,24 @@ backup velho e íntegro que um novo e quebrado.
 storage tudo que não está nele. Se a consulta falhar, voltar vazia ou a tabela ainda não
 existir, **tudo** vira órfão.
 
+**Exemplo concreto:** uma galeria guarda 40.000 fotos no storage e a lista do que é válido no
+banco. Na madrugada de terça a consulta falha por timeout, e o erro é tratado como "nenhum
+registro encontrado". A rotina conclui, com toda a lógica correta, que as 40.000 fotos são
+órfãs.
+
+```mermaid
+flowchart TD
+    A[Consultar no banco<br/>o que deve existir] --> B{Conjunto vazio ou<br/>menor que o piso?}
+    B -->|sim| C[Abortar e alertar]
+    B -->|nao| D{Quantos seriam apagados?}
+    D -->|acima do teto| C
+    D -->|dentro do teto| E[Apagar - ou apenas listar,<br/>se estiver em dry-run]
+```
+
+**O que é dry-run:** um modo em que a rotina percorre toda a lógica e **imprime** o que faria,
+sem executar nenhuma exclusão. É a forma barata de revisar uma decisão destrutiva antes que
+ela seja tomada — e a lista impressa é justamente onde "40.000 arquivos" salta aos olhos.
+
 **Regra:** antes de deletar, aborte se o conjunto de referências estiver vazio ou
 implausivelmente pequeno. Adicione teto por execução e um modo dry-run que só lista.
 
@@ -85,6 +152,11 @@ implausivelmente pequeno. Adicione teto por execução e um modo dry-run que só
 exato momento, duplicando trabalho e gastando chamadas pagas.
 
 **Causa:** um item em processamento e um item abandonado têm o mesmo estado: "pendente".
+
+**Exemplo concreto:** cada item leva até 3 minutos para ser processado. A rotina de conserto
+roda a cada 5 minutos e recolhe tudo que está "pendente" — inclusive os itens que entraram na
+fila há 30 segundos e estão perfeitamente vivos. Resultado: cada item é processado duas vezes,
+e cada processamento custa uma chamada paga.
 
 **Regra:** filtre por idade — só reconcilie pendentes com mais de N minutos. A janela deve
 ser maior que a duração máxima esperada de um lote normal.
@@ -99,6 +171,14 @@ pagas.
 **Causa:** "sem resultado" e "nunca processado" são indistinguíveis quando ausência de
 linha é o único sinal.
 
+**O que é uma linha sentinela:** um registro gravado apenas para dizer "eu já olhei aqui e não
+havia nada". Ele não representa um dado de negócio; representa **o fato de a busca ter
+acontecido**. É o que separa "vazio porque não existe" de "vazio porque ninguém perguntou".
+
+**Exemplo concreto:** um enriquecimento consulta uma API externa para cada um dos 10.000
+clientes. Trezentos deles não têm dado nenhum lá. Sem sentinela, toda madrugada o job consulta
+esses mesmos 300 de novo, para sempre, pagando por consulta — e o número nunca diminui.
+
 **Regra:** ao processar e não encontrar nada, grave uma linha sentinela. As consultas de
 negócio filtram a sentinela; as consultas de "o que falta processar" a respeitam.
 
@@ -112,12 +192,39 @@ negócio filtram a sentinela; as consultas de "o que falta processar" a respeita
 **Causa:** scripts bufferizam a saída — enquanto o processo vive, o arquivo fica vazio ou
 truncado. Tamanho de log não é medida de progresso.
 
+**O que é bufferização de saída:** por eficiência, o interpretador acumula o texto impresso
+numa área de memória e só grava em disco quando ela enche — tipicamente alguns kilobytes — ou
+quando o processo termina. Enquanto isso, quem olha o arquivo de log está vendo o passado, ou
+nada. Um processo pode ter percorrido metade do trabalho sem ter escrito uma linha sequer.
+
+**Exemplo concreto:** uma importação de planilha com 2 milhões de linhas está há 40 minutos
+"rodando", com um log de duas linhas escritas no início. Matar o processo joga fora os 40
+minutos e ainda deixa a carga pela metade.
+
+```mermaid
+flowchart TD
+    A[Tarefa ha muito tempo<br/>com log parado] --> B{Tempo de CPU acumulado}
+    B -->|poucos segundos| C[Bloqueio em I-O ou rede<br/>vivo, apenas lento]
+    B -->|crescendo| D[Esta trabalhando]
+    C --> E{Artefatos de saida<br/>esperados ja aparecem?}
+    D --> E
+    E -->|sim| F[Aguardar]
+    E -->|nao| G{Duracao comparada com a<br/>media historica da tarefa}
+    G -->|dentro do normal| F
+    G -->|muito acima| H[So agora proponha o kill]
+```
+
 **Regra:** antes de declarar travamento, junte três evidências independentes: (1) tempo de
 **CPU acumulado** do processo — poucos segundos de CPU em muitos minutos significa bloqueio
 em I/O, não travamento; (2) os artefatos de saída esperados já existem? (3) a duração
 comparada com a média histórica da mesma tarefa. Só com as três, proponha o kill.
 
 **Como verificar:** para log em tempo real, rode o interpretador em modo não-bufferizado.
+
+```bash
+python -u script.py > job.log 2>&1     # -u desliga o buffer
+PYTHONUNBUFFERED=1 python script.py    # mesma coisa, por variavel de ambiente
+```
 
 ---
 
@@ -128,6 +235,11 @@ comparada com a média histórica da mesma tarefa. Só com as três, proponha o 
 **Causa:** máquina de trabalho tem processos do mesmo interpretador rodando o tempo todo.
 Usar "não existe processo com esse nome" como sinal confunde o seu processo com os dos
 outros.
+
+**Exemplo concreto:** o watcher espera até que "não exista mais nenhum processo `python`". Na
+mesma máquina há um editor com plugin em Python, um servidor de desenvolvimento e outro job
+agendado. A condição nunca fica verdadeira, e o watcher espera a noite inteira por um job que
+terminou em oito minutos.
 
 **Regra:** espere pelo artefato que o trabalho produz, ou pelo PID específico que você
 lançou. Nunca por ausência genérica de processo.
@@ -145,6 +257,12 @@ segurando CPU, disco e o volume montado.
 `docker rm -f <nome>`. Gere o nome com sufixo aleatório para permitir execuções
 concorrentes.
 
+```bash
+NOME="conversao-$(date +%s)-$RANDOM"
+docker run --name "$NOME" imagem:tag ... || true
+docker rm -f "$NOME" >/dev/null 2>&1   # roda tambem no caminho de timeout
+```
+
 ---
 
 ## Variável de CI com host de rede interna não resolve em job comum
@@ -155,6 +273,11 @@ concorrentes.
 **Causa:** a variável foi definida no escopo mais amplo com um nome que só resolve dentro de
 uma rede privada. Em job que roda o processo direto no runner, esse nome não existe. E o
 passo era best-effort, então não derrubou o build.
+
+**O que é um passo "best-effort":** um passo escrito para nunca falhar o pipeline — na prática,
+o comando termina com `|| true` ou tem o erro engolido. A intenção é boa (não derrubar o build
+por causa de algo secundário), mas sem um log de erro **visível** ele vira um passo que nunca
+funcionou e nunca reclamou.
 
 **Regra:** variáveis com endereço de rede interna nunca vão no escopo amplo. Defina no escopo
 do projeto, com o endereço externo — o escopo mais específico sobrescreve o mais amplo. E
@@ -172,6 +295,11 @@ pipeline.
 **Causa:** precedência esconde o valor ruim; quem apagar a de projeto no futuro cai
 silenciosamente no valor errado.
 
+**Exemplo concreto:** o grupo define o endereço do banco apontando para uma máquina que já foi
+desligada. Cada projeto redefine a variável com o valor certo, então ninguém percebe. Um ano
+depois, alguém cria um projeto novo — que herda o valor do grupo — e passa a tarde procurando
+o erro no código.
+
 **Regra:** corrija o valor no nível de grupo para que o fallback também esteja certo. Antes
 de mexer, mapeie quem realmente consome aquela variável.
 
@@ -181,6 +309,11 @@ de mexer, mapeie quem realmente consome aquela variável.
 
 **Sintoma:** um passo novo, útil porém secundário, é enxertado no pipeline que sustenta o
 relatório mais importante — e passa a poder derrubá-lo.
+
+**Exemplo concreto:** o pipeline que gera o relatório de fechamento ganha, no fim, um passo
+que copia os arquivos para um bucket de arquivamento. Um dia a credencial do bucket expira. O
+passo falha, o pipeline fica vermelho, e o relatório — que já estava pronto e correto — não é
+publicado.
 
 **Regra:** rotina auxiliar (backup, espelhamento, exportação) roda **fora** do pipeline
 crítico. Documente explicitamente que é exceção consciente à convenção e por quê. Antes,
@@ -196,6 +329,11 @@ recuperar é perguntar às pessoas o que estava lá.
 **Causa:** o plano de backup cobria as tabelas grandes de pipeline — justamente as que são
 reconstruíveis rodando a extração de novo.
 
+**Exemplo concreto:** o backup cobre com carinho a tabela de 80 milhões de linhas de eventos —
+que pode ser reconstruída em duas horas rodando a extração de novo. Fora do backup ficou uma
+tabela de 40 linhas com as regras de comissão, digitadas uma a uma ao longo de dois anos. As
+40 linhas são as insubstituíveis.
+
 **Regra:** classifique cada tabela em "reproduzível pelo pipeline" e "digitada
 manualmente". A segunda é a que precisa de backup, mesmo tendo poucas linhas. Snapshot
 manual **não é backup**: se não tem agendamento, envelhece.
@@ -210,6 +348,11 @@ rotina de backup nunca escreve na origem.
 **Sintoma:** você troca a origem de um relatório e não tem como provar que melhorou.
 
 **Causa:** escrever direto nas tabelas vivas destrói a base de comparação.
+
+**Exemplo concreto:** a fonte antiga preenchia o campo de peso em 60% dos registros. Você
+troca por uma fonte nova, grava por cima, e agora não há como responder à pergunta óbvia da
+reunião: "melhorou quanto?". Com a tabela de staging ao lado, a resposta é "de 60% para 95%",
+e a conversa acaba em um minuto.
 
 **Regra:** rode o pipeline novo gravando em tabelas de staging e meça a mesma métrica de
 negócio nas duas versões. Só promova com o número na mão — e esse número é o que se
@@ -236,6 +379,11 @@ precisa dizer isso claramente — é cobrança, não bug.
 **Sintoma:** depois de migrar a leitura para outro motor, JOINs e filtros por `= ''` param
 de casar.
 
+**Exemplo concreto:** o motor antigo lia a célula em branco como `''`; o novo lê como `NULL`.
+O filtro `WHERE observacao = ''` que devolvia 3.000 linhas passa a devolver zero — e `NULL`
+nem sequer é igual a `NULL`, então o JOIN por essa coluna também emudece. Nenhum erro é
+levantado em lugar nenhum.
+
 **Regra:** ao trocar o motor, compare o resultado campo a campo numa amostra e preserve
 explicitamente a convenção anterior até que os consumidores sejam ajustados. Ler CSV
 desconhecido com todas as colunas como texto evita inferência de tipo instável entre
@@ -251,12 +399,26 @@ arquivos.
 
 **Regra:** em logging genérico, sempre `str(e) or type(e).__name__`.
 
+```python
+except Exception as e:
+    logger.error("falhou: %s", str(e) or type(e).__name__)
+```
+
 ---
 
 ## Sempre use execução destacada para tarefas longas em servidor
 
+**Exemplo concreto:** você inicia uma carga de 4 horas por SSH e vai almoçar. O Wi-Fi cai, a
+sessão morre, o processo morre junto — e o log, que estava só na tela, some com ela. Não há
+nem resultado nem pista de onde parou.
+
 **Regra:** `nohup cmd &`, `tmux` ou `screen` — e redirecione a saída para arquivo, senão
 você perde o log junto com a sessão.
+
+```bash
+nohup python -u carga.py > /var/log/carga.log 2>&1 &
+echo $! > /var/run/carga.pid          # guarde o PID para poder esperar por ele
+```
 
 ---
 
@@ -267,6 +429,10 @@ ele nunca faz o que deveria.
 
 **Causa:** o programa parou numa pergunta interativa que nunca seria respondida. Como a
 unit descartava a saída, o travamento foi mudo.
+
+**Exemplo concreto:** um agente sobe como serviço e fica "ativo" por dias sem produzir nada.
+Redirecionando a saída para um arquivo e reiniciando, a primeira linha é uma pergunta do tipo
+"confia neste diretório? [s/N]" — esperando um teclado que não existe.
 
 **Regra:** processo vivo **não** prova serviço funcional; a prova é o efeito observável. Ao
 diagnosticar, redirecione temporariamente a saída para um arquivo, reinicie e leia. Quando
@@ -293,6 +459,15 @@ arquivo, a edição precisa ir para a fonte dele.
 **Causa:** por padrão o rsync compara tamanho e mtime; um clone recente reescreve o mtime
 de tudo, mesmo com conteúdo idêntico.
 
+**Exemplo concreto:** você clona o repositório numa máquina nova para publicar uma correção de
+uma linha. O dry-run lista os 4.000 arquivos do projeto como modificados, e a revisão que
+deveria durar dez segundos vira uma decisão às cegas.
+
 **Regra:** em deploy por rsync a partir de um clone, use `-c` (checksum). Mais lento, porém
 é o que dá um dry-run legível. Peça confirmação entre o dry-run e o envio, e valide o
 destino ao final.
+
+```bash
+rsync -avc --delete --dry-run ./build/ usuario@host:/var/www/app/
+# revise a lista curta, confirme, e so entao repita sem --dry-run
+```

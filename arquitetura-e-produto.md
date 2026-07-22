@@ -7,6 +7,17 @@ autenticação, latência — inviabiliza o desenho.
 
 **Causa:** construir camada por camada só valida a integração no fim.
 
+**O que é uma fatia vertical:** em vez de terminar o banco, depois toda a API, depois toda a
+tela, você entrega **um único caso de uso atravessando todas as camadas**. É estreito de
+propósito: uma consulta, um endpoint, um gráfico. O valor não está no que ele faz, e sim no
+que ele prova — que os pedaços conseguem se falar naquele ambiente.
+
+**Exemplo concreto:** um painel de vendas com 20 gráficos previstos. A fatia vertical é um
+número só: "faturamento de ontem". Ela já obriga a resolver o acesso ao banco que está em
+rede privada, o login, o formato do retorno e o desenho na tela. Se algo aí é impossível,
+você descobre na primeira semana e não no quarto mês, com 19 gráficos prontos que não
+conseguem buscar dado nenhum.
+
 **Regra:** primeira entrega é uma fatia de ponta a ponta com um único caso: uma consulta →
 um endpoint → uma visualização → o consumo por quem vai integrar. Ela exercita exatamente as
 restrições que podem matar o projeto. Quando a fonte de dados vive em rede privada, exponha
@@ -24,6 +35,31 @@ E registros sem arquivo, pendentes eternamente.
 **Causa:** no fluxo com URL assinada, o byte vai do navegador direto para o storage e o
 backend só é avisado **depois**. Esse "depois" pode nunca acontecer. A operação está quebrada
 em várias etapas de rede que não compartilham transação.
+
+**O que é upload por URL assinada:** o backend não recebe o arquivo. Ele apenas emite um
+endereço temporário e autorizado, e o navegador envia os bytes direto para o storage. Isso
+economiza banda e tempo do servidor — e cria o problema: entre "autorizei" e "me avisaram
+que terminou" existe uma janela em que ninguém está no controle.
+
+**Exemplo concreto:** alguém sobe 200 fotos de um álbum. Na foto 130, fecha a aba. Sem essa
+regra, ficam 130 arquivos pagos e invisíveis no storage e nada no banco. Com ela, existem
+130 registros marcados como não prontos, e a rotina seguinte olha um por um: os 130 que têm
+arquivo viram públicos, os 70 que não têm são descartados.
+
+```mermaid
+flowchart TD
+    A[Usuario pede para enviar] --> B[Backend grava registro<br/>marcado como nao pronto]
+    B --> C[Backend devolve URL assinada]
+    C --> D[Navegador envia bytes<br/>direto ao storage]
+    D --> E{Backend foi avisado<br/>de que terminou?}
+    E -->|sim| F[Marca como pronto<br/>e publica]
+    E -->|aba fechada ou rede caiu| G[Fica pendente]
+    G --> H[Reconciliacao varre<br/>os pendentes]
+    H --> I{Objeto existe<br/>no storage?}
+    I -->|sim| F
+    I -->|nao| J[Descarta o registro]
+    K[Listagem publica] -.->|filtra por pronto| F
+```
 
 **Regra:** inverta — ao assinar a URL, já grave o registro com marcador de "não pronto"; a
 listagem pública filtra por "pronto". Uma rotina de reconciliação varre os pendentes: se o
@@ -43,6 +79,21 @@ os pendentes sem intervenção manual.
 **Causa:** regerar derivados é inofensivo (sobrescreve). Já chamadas a serviços externos
 pagos que **acumulam estado** — indexação, cobrança, envio — não são idempotentes.
 
+**O que é idempotência:** uma operação é idempotente quando executá-la dez vezes deixa o
+sistema no mesmo estado que executá-la uma vez. Gerar a miniatura de uma foto é idempotente:
+a segunda execução sobrescreve a primeira e o resultado é igual. Enviar o e-mail de
+confirmação não é: a segunda execução gera um segundo e-mail, e o cliente recebe dois.
+
+**Exemplo concreto:** a rotina que finaliza um pedido faz três coisas: recalcula o resumo,
+gera o PDF do recibo e envia o e-mail de confirmação. Rodar de novo é seguro nas duas
+primeiras — só sobrescreve. Na terceira, o cliente recebe o segundo e-mail e liga achando
+que comprou duas vezes. A guarda vai só antes do envio, e é uma linha no banco:
+
+```sql
+INSERT INTO emails_enviados (pedido_id, tipo) VALUES ($1, 'confirmacao')
+ON CONFLICT DO NOTHING;   -- 0 linhas = ja foi enviado, nao envie de novo
+```
+
 **Regra:** torne a função inteira segura para repetir, mas coloque uma guarda explícita
 imediatamente antes do passo com efeito acumulativo: "só executa se ainda não houver
 registro do resultado". A guarda vive no banco, não na memória do processo.
@@ -52,6 +103,11 @@ registro do resultado". A guarda vive no banco, não na memória do processo.
 ## Valor cobrado se recalcula no servidor; total vindo do cliente é sugestão
 
 **Causa:** é natural o front já ter o total calculado para exibir e mandá-lo junto no envio.
+
+**Exemplo concreto:** o carrinho manda `{"itens": [...], "total": 250.00}`. Qualquer pessoa
+com o console do navegador aberto reenvia a mesma compra com `"total": 1.00`. Se o servidor
+confiar no campo, a cobrança sai de um real. O payload correto manda só os itens e as
+quantidades; os 250 reais são conclusão do servidor, não informação do cliente.
 
 **Regra:** uma única função de cálculo, no servidor, usada tanto pela tela quanto pela
 geração da cobrança. O payload do cliente traz apenas parâmetros — o quê, quanto —, nunca o
@@ -65,6 +121,36 @@ resultado financeiro.
 
 **Causa:** um único estado "cancelado" usado tanto para desistência antes do pagamento
 quanto para devolução depois.
+
+**Exemplo concreto:** em janeiro entram 100 pedidos: 90 pagos e 10 abandonados no checkout.
+Em fevereiro, 3 dos pagos são devolvidos. Com um estado só, os 13 viram "cancelado" e o
+relatório de janeiro passa a mostrar 87 vendas — mas o dinheiro dos 3 estornados **entrou**
+em janeiro e **saiu** em fevereiro. O extrato do banco nunca vai bater com o relatório.
+
+```mermaid
+stateDiagram-v2
+    [*] --> pendente
+    pendente --> pago
+    pendente --> cancelado
+    pago --> estornado
+    cancelado --> [*]
+    estornado --> [*]
+    note right of cancelado
+        desistencia antes do pagamento
+        nao houve dinheiro
+        libera o estoque reservado
+    end note
+    note right of estornado
+        devolucao depois do pagamento
+        houve dinheiro entrando e saindo
+        conta como receita no mes da venda
+    end note
+    note right of pago
+        cancelar um pedido pago e proibido
+        o unico caminho e estornar
+        e o dinheiro volta antes do status mudar
+    end note
+```
 
 **Regra:** modele transições explícitas (`pendente → pago | cancelado`, `pago → estornado`)
 numa função `podeTransicionar`; derive de funções puras quem **segura** estoque, quem
@@ -83,6 +169,11 @@ loja — e as vendas param até alguém perceber.
 **Causa:** o botão "ativar controle de estoque" gravava **zero**, e zero significa esgotado,
 que significa produto oculto na loja. Sem confirmação e sem aviso.
 
+**Exemplo concreto:** o lojista está passeando pela tela nova e clica em "ativar controle de
+estoque" só para ver o que acontece. O produto mais vendido some da vitrine naquele segundo.
+Ele descobre três dias depois, pelo faturamento. O botão devia ter perguntado "quantas
+unidades você tem?" e avisado "produtos com estoque zero ficam ocultos na loja".
+
 **Regra:** ativar um recurso nunca deve gravar um valor com efeito destrutivo. Peça o valor,
 só grave quando informado, e avise em texto claro qual é a consequência visível.
 
@@ -92,6 +183,10 @@ só grave quando informado, e avise em texto claro qual é a consequência visí
 
 **Sintoma:** para mudar o papel de um usuário só existia apagar e recriar — o que obriga a
 combinar uma senha nova com a pessoa.
+
+**Exemplo concreto:** promover um atendente a gerente exige apagar a conta e criar outra. A
+pessoa perde o histórico de ações, recebe uma senha provisória por mensagem e precisa
+refazer o login em todo lugar — tudo isso para trocar uma palavra numa coluna.
 
 **Regra:** ao modelar permissões, garanta a operação de alteração desde o começo, com
 travas: o papel de dono nunca é oferecido na lista (um segundo dono pode apagar o primeiro)
@@ -106,6 +201,12 @@ e ninguém altera o próprio papel.
 **Causa:** confundir navegação com autorização, e presumir que os papéis do seu modelo
 correspondem à realidade daquele negócio.
 
+**Exemplo concreto:** você modela três papéis — dono, gerente, atendente. O primeiro cliente
+tem um contador externo que só precisa ver relatórios financeiros, e um estagiário que só
+cadastra produtos. Nenhum dos dois cabe nos três papéis, e o cliente seguinte vai ter dois
+casos diferentes destes. Uma lista de áreas liberadas por pessoa acomoda os quatro sem
+inventar um papel novo a cada contrato.
+
 **Regra:** lista de áreas liberadas costuma modelar melhor que papéis fixos. Identifique de
 antemão as travas **não-delegáveis** — assinatura, credenciais de pagamento, domínio, gestão
 de usuários e operações que movem dinheiro — e o requisito estrutural: se hoje existe relação
@@ -119,6 +220,29 @@ verificação de posse.
 **Sintoma:** trocar de fornecedor exige mexer em dezenas de arquivos, e um deploy com a
 chave faltando expõe a feature quebrada para todo mundo.
 
+**O que é o padrão Adapter, e o que é falhar de forma segura:** Adapter é definir um
+contrato que o **seu** código usa — `enviar(mensagem)` — e escrever uma classe por
+fornecedor traduzindo esse contrato para a API específica de cada um. O resto do sistema
+nunca chama o fornecedor direto, só o contrato. Falhar de forma segura (fail-closed) é a
+outra metade: sem credencial, o sistema **não oferece** a funcionalidade. O oposto
+(fail-open) é seguir em frente e deixar o usuário descobrir o buraco no clique.
+
+**Exemplo concreto:** um app de tarefas manda lembretes por e-mail. Existem
+`AdapterProvedorA` e `AdapterProvedorB`, ambos com `enviar(destinatario, texto)`; uma
+factory decide qual devolver. Trocar de fornecedor é escrever um arquivo novo e mudar uma
+linha da factory. E no dia em que a chave não foi configurada no ambiente, a factory devolve
+`null`, o botão aparece como "em breve", e ninguém vê uma tela de erro.
+
+```mermaid
+flowchart TD
+    A[Codigo da aplicacao<br/>chama enviar] --> F{Factory}
+    F -->|credencial do A| B[Adapter do provedor A]
+    F -->|credencial do B| C[Adapter do provedor B]
+    F -->|sem credencial| D[Devolve null<br/>UI mostra em breve]
+    B --> E[API do provedor A]
+    C --> G[API do provedor B]
+```
+
 **Regra:** defina um contrato e um adapter por fornecedor, escolhidos por uma factory —
 trocar de provedor vira um arquivo novo. A factory retorna `null` quando a credencial não
 está configurada, e a UI mostra "em breve" em vez de tentar. Complemente com allowlist por
@@ -128,6 +252,11 @@ obriga todos os usuários a reconectar — por isso migrar cedo, enquanto a base
 ---
 
 ## Dados de demonstração vazam para sitemap e listagens públicas
+
+**Exemplo concreto:** você cria 10 produtos falsos para gravar um vídeo de apresentação da
+loja. Some da vitrine porque a listagem principal foi filtrada. Três semanas depois, alguém
+pesquisa o nome da loja num buscador e a primeira ocorrência é "Camiseta Teste 3" — que o
+sitemap entregou e a busca do site também.
 
 **Regra:** marque registros de demo com uma flag dedicada num único módulo e aplique esse
 filtro em toda superfície pública — listagens, busca, sitemap, feeds. Um filtro só,
@@ -142,6 +271,11 @@ reutilizado, evita esquecer um lugar.
 **Causa:** print é trivialmente falsificável — é o golpe clássico de balcão. IA lendo valor
 e data pega falsificação grosseira, e só.
 
+**Exemplo concreto:** o comprador manda a imagem de uma transferência de R$ 200 feita
+ontem para outra pessoa, com o nome do destinatário editado. Valor confere, data confere,
+formato confere. O sistema libera o pedido. O dinheiro nunca entrou na conta da loja, e
+ninguém vai olhar o extrato antes do envio.
+
 **Regra:** quem prova é o extrato do provedor. Se a cobrança passa por um adquirente, deixe
 a confirmação automática ser a fonte da verdade; se é chave estática, a confirmação é manual
 e isso deve estar claro na UI.
@@ -151,6 +285,11 @@ e isso deve estar claro na UI.
 ## Recibo deve ser gerado ao vivo e não conter contato do cliente
 
 **Sintoma:** um comprovante compartilhado continua dizendo "pago" depois de um estorno.
+
+**Exemplo concreto:** o comprovante é um PDF gerado no momento da compra e enviado por link.
+O pedido é estornado na semana seguinte, e o link continua entregando o mesmo papel dizendo
+"pago" — agora um documento falso, que pode ser reencaminhado para qualquer pessoa. E se ele
+trouxer o telefone e o endereço do comprador, cada reencaminhamento vaza os dois.
 
 **Regra:** gere o comprovante a partir do estado atual — comprovante congelado após estorno
 é documento falso circulando. Não inclua telefone nem endereço: o link é reencaminhável, e o
@@ -165,6 +304,11 @@ comprovante prova a compra, não expõe o comprador.
 **Causa:** o limiar de confiança alto derruba correspondências legítimas em condições ruins,
 e o limite máximo de resultados corta o resto sem avisar.
 
+**Exemplo concreto:** a busca por foto tem limiar de 0,85 e teto de 10 resultados. O produto
+certo aparece com 0,80 numa foto mal iluminada e é descartado; e mesmo quando passa, se 10
+itens mais parecidos vierem antes, ele fica de fora da lista sem que nada indique que houve
+corte. Os dois números são invisíveis para quem usa — e para quem investiga.
+
 **Regra:** ajuste limiar e teto conscientemente e registre-os como configuração, não como
 número mágico. Antes de culpar a busca, confirme que a indexação terminou — resultado vazio
 pode ser recall ruim **ou** base incompleta, e são diagnósticos opostos.
@@ -172,6 +316,11 @@ pode ser recall ruim **ou** base incompleta, e são diagnósticos opostos.
 ---
 
 ## Automação de mensageiro por biblioteca não-oficial bane o número do cliente
+
+**Exemplo concreto:** o pedido é "avisar por mensagem quando o pedido sair para entrega".
+Uma biblioteca não-oficial resolve em uma tarde e funciona por três semanas — até a
+plataforma detectar o padrão automatizado e banir o número. O número banido é o mesmo que a
+loja usa para atender clientes há cinco anos, e não volta.
 
 **Regra:** ou faz pelo caminho oficial (conta comercial verificada, template aprovado, custo
 por conversa), ou usa outro canal. Nunca coloque o número do cliente em risco. Antes disso,
@@ -187,6 +336,11 @@ fase de integração.
 **Causa:** APIs de plataformas com forte apelo visual costumam exigir tier corporativo,
 autenticação por usuário final e revisão do app antes de publicar.
 
+**Exemplo concreto:** o produto inteiro é "gere o material e publique direto na plataforma".
+Três semanas de desenvolvimento depois, descobre-se que publicar exige plano corporativo com
+contrato anual e uma revisão de app que leva semanas. O produto não fica atrasado — ele fica
+inviável, e a descoberta custava meia hora de leitura da documentação de acesso no dia zero.
+
 **Regra:** valide tier comercial, modelo de autenticação e processo de aprovação **antes** de
 desenhar o produto em cima. Alternativa controlada: renderizar HTML/CSS próprio e converter
 para PDF.
@@ -198,6 +352,16 @@ para PDF.
 **Causa:** muitos repositórios populares são copyleft, não-comercial, ou simplesmente **sem
 licença** — e sem licença significa "todos os direitos reservados", não "livre".
 
+**O que muda entre as famílias:** permissiva (MIT, Apache, BSD, CC0) deixa você usar num
+produto fechado, bastando manter o aviso de copyright. Copyleft exige que o que você
+distribuir derivado dali também seja aberto sob a mesma licença. Não-comercial proíbe o uso
+que paga a conta. E ausência de licença é o caso mais perigoso justamente por parecer o mais
+livre: publicar no aberto não concede direito nenhum de uso.
+
+**Exemplo concreto:** você encontra um editor de imagens no navegador, sem arquivo de
+licença, com 30 mil estrelas. Usar como base do seu produto pago é usar código de terceiro
+sem permissão — e o fato de estar público não muda isso.
+
 **Regra:** como base de código, só MIT/Apache/BSD/CC0, confirmada pela API de licença do
 provedor — não pelo README. Qualquer outra coisa entra apenas como referência visual, com a
 implementação recriada.
@@ -208,6 +372,12 @@ implementação recriada.
 
 **Sintoma:** um caminho de código nunca foi realmente exercitado porque, localmente, ele
 para antes com erro de configuração.
+
+**Exemplo concreto:** o fluxo de pagamento local morre na primeira linha, por falta da chave
+do adquirente. Todo o código que roda **depois** da cobrança aprovada — atualizar o pedido,
+mandar o recibo — nunca executou uma vez sequer. Ele estreia em produção, com dinheiro real
+de um cliente real, e o único jeito de saber o que aconteceu é o log que você lembrou de
+escrever antes.
 
 **Regra:** assuma explicitamente o que só pode ser validado em produção e planeje como
 observar: log estruturado, endpoint de diagnóstico protegido, ou um painel temporário

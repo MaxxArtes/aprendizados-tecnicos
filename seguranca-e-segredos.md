@@ -9,6 +9,11 @@ repositório, no bundle do cliente e no histórico do Git para sempre.
 produção e derrubou o login) e vira hábito. Aparece em segredo de sessão, chave de API
 de mapa, string de conexão em arquivo de configuração.
 
+**Exemplo concreto:** o login do seu blog caiu numa sexta porque o segredo de sessão não
+foi injetado. Você escreve `process.env.SESSION_SECRET || "s3nh4-do-blog-2024"` para não
+acontecer de novo. Um ano depois esse literal está em 400 commits, e qualquer pessoa que
+clonar o repositório consegue forjar o cookie de qualquer usuário.
+
 **Regra:** falte a variável, **falhe alto** — `throw new Error("X não definida")` na
 inicialização. Um erro de boot claro custa minutos; uma chave versionada custa rotação
 de credencial e reescrita de histórico. Para o caso "a plataforma às vezes não injeta",
@@ -30,6 +35,17 @@ erro, nenhum aviso.
 **Causa:** esses prefixos instruem o bundler a **inlinear** o valor no código que vai
 para o navegador. É o comportamento documentado — o erro é humano, ao nomear.
 
+**O que significa "inlinear":** o bundler não lê a variável em tempo de execução; ele
+faz uma substituição de texto durante o build. Onde estava `process.env.NEXT_PUBLIC_X`,
+o arquivo JavaScript final passa a conter o valor literal, escrito por extenso. Não há
+nada em runtime que possa esconder isso depois.
+
+**Exemplo concreto:** numa loja online, a chave pública do provedor de pagamento precisa
+mesmo ir para o navegador, então alguém a nomeia com prefixo público — correto. Meses
+depois, outra pessoa precisa da chave **secreta** do mesmo provedor num componente e,
+como "o outro nome funcionava", duplica com o mesmo prefixo. A chave que autoriza estorno
+passa a ser servida junto com a página de checkout.
+
 **Regra:** só use esses prefixos em valor que você publicaria num outdoor. Ao criar uma
 variável, decida primeiro o lado (servidor ou cliente) e só então o nome. Nunca
 "duplique com prefixo público para facilitar".
@@ -46,6 +62,24 @@ página, visível em "ver código-fonte" — mesmo o código nunca tendo usado u
 **Causa:** props passadas de um componente de servidor para um de cliente são
 serializadas e enviadas ao browser. Passar o objeto de configuração inteiro leva junto
 o segredo.
+
+**O que é hidratação, e por que ela carrega dados:** o servidor manda HTML pronto para o
+usuário ver rápido, mas o JavaScript no navegador precisa reassumir aquela tela e torná-la
+interativa. Para isso ele precisa dos **mesmos dados** que o servidor usou — e esses dados
+viajam embutidos no HTML, num bloco serializado. Tudo que virou prop de um componente de
+cliente está nesse bloco, legível por qualquer pessoa.
+
+```mermaid
+flowchart LR
+    S["Componente de servidor<br/>le a config inteira"] -->|objeto inteiro como prop| H["Bloco serializado<br/>dentro do HTML"]
+    H --> B["Navegador<br/>ver codigo-fonte mostra o segredo"]
+    S -->|booleano derivado| OK["temPagamentoConfigurado = true"]
+    OK --> B2["Navegador<br/>nao ha o que vazar"]
+```
+
+**Exemplo concreto:** a página de configurações lê o registro da loja no banco e passa
+`<PainelPagamento loja={loja} />`. O objeto `loja` tem 12 campos, e um deles é a chave
+secreta do provedor de pagamento. A tela nunca mostra esse campo — mas ele está no HTML.
 
 **Regra:** nunca passe o segredo como prop. Derive no servidor apenas o que a UI precisa
 saber — normalmente um booleano (`temPagamentoConfigurado`) ou um dado já mascarado.
@@ -65,6 +99,17 @@ componente cliente.
 
 **Causa:** passar o objeto inteiro do registro (que inclui a credencial daquele cliente)
 como props.
+
+**O que é "cifrar em repouso", e por que o ponto único importa:** cifrar em repouso é
+guardar o valor embaralhado no banco, de modo que um dump do banco — vazado, copiado para
+staging, aberto num cliente de SQL — não entregue a credencial. A cifra só é desfeita no
+instante do uso. Se a decifragem estiver espalhada por dez lugares, você tem dez lugares
+onde o valor claro pode acabar num log ou numa prop; concentrando num único módulo, há um
+lugar só para auditar.
+
+**Exemplo concreto:** sua plataforma hospeda 300 lojas, e cada lojista cola a própria
+chave do provedor de pagamento no painel. Essas 300 chaves não são suas: um vazamento
+significa cobranças indevidas na conta de terceiros, e você é quem responde.
 
 **Regra:** derive booleanos no servidor e passe só isso. Cifre a credencial em repouso
 (AES-256-GCM) e decifre num **único ponto** — o cliente HTTP que fala com o provedor —
@@ -96,6 +141,11 @@ escopo por projeto.
 CI e incluí-lo no `tar.gz` do artefato. Artefatos são baixáveis por qualquer pessoa com
 acesso de leitura ao repositório e ficam retidos por dias.
 
+**Exemplo concreto:** o pipeline monta o build e empacota a pasta inteira, `.env.production`
+junto. O arquivo fica disponível para download por 30 dias, para qualquer colaborador com
+leitura no repositório — inclusive o estagiário que entrou ontem e o contratado que saiu
+mês passado mas ainda tem acesso.
+
 **Regra:** injete segredos como variáveis de ambiente do passo de build, nunca como
 arquivo dentro do artefato. Se o runtime precisar deles, entregue no servidor de destino
 no momento da execução.
@@ -115,6 +165,11 @@ paga em disco.
 **Causa:** empacotadores de app desktop aceitam listar `.env` em recursos extras, e é a
 forma mais rápida de fazer o app funcionar sem backend.
 
+**Exemplo concreto:** um app de tarefas com um recurso de resumo automático. Para evitar
+subir um backend, a chave paga vai dentro do instalador. Foram 500 downloads: agora
+existem 500 cópias da sua chave em máquinas alheias, e basta uma pessoa curiosa abrir a
+pasta de instalação para começar a gastar seu crédito.
+
 **Regra:** chave paga fica no seu servidor; o app desktop fala com um endpoint seu,
 autenticado por credencial do usuário. Se o app precisa mesmo de chave, ela é **do
 usuário**, digitada por ele e guardada no cofre do sistema operacional.
@@ -132,6 +187,11 @@ transcrição exportado — muito depois de ter sido "usada só uma vez".
 **Causa:** comandos como `echo`, `export` inline e testes rápidos de credencial são
 capturados pelo histórico do shell e por qualquer ferramenta que registre a sessão.
 Truncar na tela não trunca no arquivo.
+
+**Exemplo concreto:** para conferir se a variável carregou, você roda `echo $API_KEY`.
+O valor aparece na tela por um segundo e some. Mas ficou no arquivo de histórico do shell,
+na gravação da sessão e no log da ferramenta que você usa para trabalhar — três cópias
+que ninguém vai lembrar de limpar.
 
 **Regra:** nunca ecoe uma credencial. Para testar, verifique só o efeito
 (`comando && echo OK`) ou o hash do valor. Trate qualquer chave que tenha passado por um
@@ -154,6 +214,12 @@ gerenciador de segredos, sem imprimir credencial em lugar nenhum.
 **Regra:** compare o `sha256` dos dois valores — prova igualdade sem revelar nada.
 Registre apenas essa evidência; nunca cole o valor completo em anotação ou ticket.
 
+```bash
+printf '%s' "$DO_ARQUIVO" | sha256sum
+printf '%s' "$DO_COFRE"   | sha256sum
+# hashes iguais = mesmo segredo, e nada sensível foi impresso
+```
+
 ---
 
 ## Audite documentação cruzando contra os valores reais do cofre
@@ -163,6 +229,10 @@ de anotações ou um log de sessão, escrita meses atrás e esquecida.
 
 **Causa:** documento de contexto é escrito no fluxo do trabalho, quando o valor está à
 mão. Diferente de código, não passa por review nem por scanner de segredo.
+
+**Exemplo concreto:** no `README` do projeto alguém escreveu "para testar local, use a
+chave `xxxxx` do ambiente de sandbox". Na época era sandbox mesmo. Depois o valor foi
+promovido a produção e ninguém voltou no `README` — que está num repositório público.
 
 **Regra:** varra a documentação como você varreria o código. Regex de formato (`sk-`,
 `AKIA`, `ghp_`) pega uma parte, mas o método mais forte é comparar contra os valores
@@ -186,6 +256,15 @@ caem em produção.
 segredos, envs de plataforma, configs de servidor), e o runtime só recarrega em novo
 deploy ou restart.
 
+```mermaid
+flowchart TD
+    A["1 - Gerar a credencial nova"] --> B["2 - Atualizar em todos os lugares<br/>cofre, plataforma, servidor, dev, staging"]
+    B --> C["3 - Redeploy ou restart<br/>de cada consumidor"]
+    C --> D["4 - Revogar a antiga"]
+    D --> OK["Nenhuma queda"]
+    X["Atalho - revogar primeiro"] --> Y["Tudo cai ate alguem<br/>redeployar cada servico"]
+```
+
 **Regra:** sequência obrigatória — (1) gerar a credencial nova; (2) atualizar em
 **todos** os lugares onde o valor aparece, incluindo dev e staging; (3) redeploy ou
 restart de cada consumidor; (4) só então revogar a antiga. Antes de tudo, mapeie os
@@ -203,6 +282,11 @@ não devem ser tocados.
 ambiente da plataforma de deploy, e só uma foi atualizada. Editar direto no painel do
 host cria uma segunda fonte que o gerenciador não sobrescreve nem audita.
 
+**Exemplo concreto:** numa madrugada de incidente, alguém colou a senha nova direto no
+painel da plataforma de deploy para resolver rápido. Funcionou. Três meses depois, a
+rotação oficial atualiza o gerenciador de segredos, todo mundo dá deploy — e a aplicação
+continua usando a senha antiga, porque o valor do painel vence.
+
 **Regra:** escolha uma fonte canônica. Se a duplicação for inevitável, documente e
 rotacione nos dois lugares no mesmo procedimento. Saiba, por projeto, qual é a fonte
 **efetiva** do runtime — ter o valor "guardado em algum lugar" não é o mesmo que ele
@@ -219,6 +303,15 @@ mesmo nome", e a aplicação sobe apontando para o banco de outro sistema — e 
 entre projetos com valores completamente diferentes. Convenções divergem entre projetos
 criados em épocas diferentes: dá para ter `SERVICE_API_KEY` num e `API_KEY_SERVICE`
 noutro, com valores de contas distintas.
+
+**Exemplo concreto:** você está subindo o app de reservas e falta `DATABASE_URL`. O
+projeto do blog tem uma variável com esse nome exato, então você copia. O app de reservas
+sobe lindamente — rodando migrations no banco do blog.
+
+**Por que o índice guarda só nomes:** a maioria dos gerenciadores de segredos é
+*write-only* — depois de gravado, o valor não é mais legível nem por você. Isso é
+proposital e bom. A consequência prática é que, sem um mapa externo dizendo **onde cada
+nome mora e para que serve**, a única forma de descobrir é adivinhar por tentativa.
 
 **Regra:** mantenha um mapa versionado **só com nomes e propósito** — em qual projeto
 cada variável mora e para que serve. Isso é essencial porque muitos gerenciadores são
@@ -239,6 +332,11 @@ documentado? todo nome documentado ainda existe? Cuidado com notação compacta
 **Causa:** provedores de pagamento costumam ter **chave de API** (seu app chama o
 provedor) e **token de assinatura de webhook** (o provedor chama seu app). São coisas
 diferentes, geradas em telas diferentes, e ambas parecem "o token do fornecedor".
+
+**Exemplo concreto:** a loja continua cobrando normalmente, então ninguém percebe nada.
+Mas o pedido nunca sai do status "aguardando pagamento", porque a confirmação que o
+provedor envia de volta está sendo rejeitada com 401. Você descobre pelo cliente
+reclamando, não pelo monitoramento.
 
 **Regra:** nomeie pelo **sentido do tráfego** (`X_API_KEY` vs `X_WEBHOOK_TOKEN`),
 documente em que painel cada uma é gerada, e teste os dois caminhos após qualquer rotação.
@@ -266,6 +364,11 @@ antes de tratá-la como valor independente.
 **Causa:** a credencial pessoal do desenvolvedor costuma ter validade limitada por política;
 a conta de serviço normalmente não.
 
+**Exemplo concreto:** numa segunda-feira, seis rotinas agendadas falham ao mesmo tempo com
+erro de autenticação. Não houve deploy, não houve mudança de rede. O que houve foi a troca
+obrigatória de senha do desenvolvedor que criou os jobs há dois anos — e que talvez nem
+trabalhe mais ali.
+
 **Regra:** automação sempre com conta de serviço dedicada. Se herdar um job com
 credencial pessoal, migre antes que expire. Cuidado ao copiar valores entre arquivos:
 **comentário inline colado no valor** (`SENHA=xxx   # conta de serviço`) vira parte da senha
@@ -280,6 +383,11 @@ em vários parsers de `.env`.
 **Causa:** o middleware casa a rota da página, não as rotas de API que aquela página
 chama. Sem sessão dá para apagar registros, disparar rotinas que consomem crédito pago e
 ler estatísticas.
+
+**Exemplo concreto:** o middleware protege tudo que começa com `/admin`. A tela de produtos
+mora em `/admin/produtos` — protegida. Mas o botão "excluir" chama `DELETE /api/produtos/42`,
+que não começa com `/admin` e nunca foi coberto. Um `curl` sem cookie apaga o catálogo
+inteiro.
 
 **Regra:** um helper único de autenticação usado por **todas** as rotas de mutação.
 Liste explicitamente as poucas rotas públicas e teste-as. Esconder aba ou botão nunca é
@@ -298,6 +406,10 @@ apagar conteúdo de outra área, porque as rotas usavam apenas `isAuthenticated(
 **Causa:** um único gate booleano genérico replicado em todas as rotas cresce junto com
 o número de perfis e vira falso positivo.
 
+**Exemplo concreto:** você cria uma conta para a contadora, que só precisa ver o relatório
+de faturamento. Ela está logada — e `isAuthenticated()` devolve `true` também na rota que
+apaga posts do blog. Ninguém quis dar essa permissão; ela simplesmente veio junto.
+
 **Regra:** exporte **um gate por capacidade** (`somenteDono`, `gerenciaConteúdo`,
 `verFinanceiro`), não um gate por autenticação. Cada rota importa o gate da sua
 capacidade. Bootstrap do primeiro superusuário por variável de ambiente ou promoção do
@@ -315,6 +427,10 @@ e preço unitário.
 
 **Causa:** filtrar no cliente. Com custo e preço na mão, uma divisão revela a margem.
 
+**Exemplo concreto:** o revendedor abre o catálogo e vê "R$ 100". A resposta JSON daquela
+mesma tela traz `custo: 60` num campo que a interface simplesmente não renderiza. Abrir a
+aba de rede do navegador — dois cliques — entrega sua margem de 40%.
+
 **Regra:** o servidor monta **payloads diferentes por papel**. Se um dado é derivável
 dos campos enviados, ele não está protegido.
 
@@ -327,6 +443,11 @@ com senha trivial continua respondendo em produção meses depois.
 
 **Causa:** código de inicialização que "só rodaria uma vez" nunca foi removido, e o
 login aceitava comparação em texto plano como fallback.
+
+**Exemplo concreto:** para não configurar o primeiro acesso na mão, você criou
+`GET /api/setup-admin`, que cria o usuário `admin` com senha `admin`. Rodou uma vez no dia
+do lançamento e você esqueceu. A rota continua no ar: qualquer pessoa que abra essa URL
+recria a conta e entra como administrador.
 
 **Regra:** remova rotas de setup assim que o ambiente sobe. Login só aceita hash com
 algoritmo moderno. Apague contas fracas do banco. Deletar código morto em produção é
@@ -346,6 +467,20 @@ basta o atacante mandar o cabeçalho com um IP diferente a cada requisição.
 primeiro elemento é fornecido pelo cliente**. Só os hops finais, anexados pela sua
 própria borda, são confiáveis.
 
+**Como a lista se forma:** cada proxy pelo qual a requisição passa **acrescenta ao final**
+o endereço de quem falou com ele. Se o cliente já mandar o cabeçalho preenchido, esse
+conteúdo inventado fica na frente de tudo — e continua lá quando a requisição chega em
+você. Ninguém no caminho apaga o que veio antes.
+
+```mermaid
+flowchart LR
+    C["Cliente envia o cabecalho<br/>ja preenchido com valor falso"] --> P1["Proxy intermediario<br/>anexa ao final"]
+    P1 --> P2["Sua borda<br/>anexa o hop real anterior"]
+    P2 --> APP["Aplicacao le a lista completa"]
+    APP --> N["Primeiro item<br/>escolhido pelo atacante"]
+    APP --> S["Ultimo item<br/>escrito por voce - confiavel"]
+```
+
 **Regra:** prefira o cabeçalho de IP real que sua plataforma injeta; como fallback, use
 o **último** hop. Centralize numa única função usada em todo lugar que envolva identidade
 de origem — lockout, rate limit, auditoria.
@@ -362,6 +497,25 @@ para validar sessão.
 
 **Causa:** o runtime de borda só oferece WebCrypto e `fetch`.
 
+**O que é HMAC, em uma frase:** é um selo criptográfico calculado sobre um valor usando
+uma chave secreta que só o servidor conhece. Quem não tem a chave não consegue produzir um
+selo válido para um valor inventado, e qualquer alteração no valor invalida o selo. Ele
+prova **integridade e origem** — não esconde nada e não diz se a sessão ainda está viva.
+
+```mermaid
+sequenceDiagram
+    participant U as Navegador
+    participant M as Middleware na borda
+    participant A as Rota de API
+    participant DB as Banco
+    U->>M: cookie com id da sessao mais assinatura
+    M->>M: recalcula o HMAC com WebCrypto sem I/O
+    M-->>U: 401 se a assinatura nao bate
+    M->>A: encaminha se a assinatura bate
+    A->>DB: sessao existe, nao expirou, qual o papel
+    DB-->>A: decisao final
+```
+
 **Regra:** emita o cookie como `<idSessão>:<HMAC-SHA256(idSessão)>`. O middleware
 verifica só a assinatura — barato, sem I/O — e barra todo o tráfego não autenticado. A
 verificação **completa** (sessão existe, não expirou, papel do usuário) acontece nas
@@ -374,6 +528,16 @@ rotas de API, contra o banco. Duas camadas: uma barata e ampla, outra cara e pre
 **Sintoma:** nenhum — até alguém usar sua rota como proxy para a rede interna.
 
 **Causa:** rota que aceita uma URL do cliente e busca o conteúdo do lado do servidor.
+
+**O que é SSRF:** é quando o atacante escolhe **para onde o seu servidor vai fazer uma
+requisição**. O pedido sai da sua infraestrutura, de dentro do perímetro — alcançando
+serviços internos, painéis administrativos sem exposição pública e endpoints de metadados
+da nuvem que nenhum navegador de fora conseguiria acessar. A resposta volta pela sua
+própria rota, como se fosse conteúdo legítimo.
+
+**Exemplo concreto:** você cria `GET /api/preview?url=...` para gerar a miniatura de um
+link colado pelo usuário. Alguém passa o endereço interno do painel de administração da
+sua rede — e sua rota, que tem acesso a ele, devolve o HTML da página inteira.
 
 **Regra:** valide que o host pertence ao seu próprio storage ou domínios conhecidos
 antes de buscar. Prefira receber a **chave** do objeto e montar a URL no servidor.
@@ -388,6 +552,17 @@ caminho de arquivo ou numa configuração de proxy.
 **Causa:** esses identificadores atravessam três domínios de interpretação (shell,
 filesystem, DNS), cada um com seus metacaracteres.
 
+**Exemplo concreto:** o usuário escolhe o identificador da loja dele, e esse texto vira
+ao mesmo tempo o subdomínio, a pasta onde ficam os uploads e o nome do container. Um
+identificador com `../` sobe de diretório; um com `;` ou espaço vira argumento extra no
+comando; um com maiúscula simplesmente não é aceito como nome DNS. Três bugs diferentes,
+mesma origem.
+
+**O que é um rótulo DNS:** é cada pedaço entre pontos de um domínio. O formato é estreito
+de propósito — só letras minúsculas, dígitos e hífen, sem começar nem terminar com hífen,
+no máximo 63 caracteres. Por ser o mais restritivo dos três domínios de interpretação, ele
+serve como denominador comum seguro para os outros dois.
+
 **Regra:** uma regex allowlist única — `^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$`, o formato de
 rótulo DNS — aplicada na validação do payload **e** de novo em cada rota que consome.
 Nunca sanitize por remoção sem revalidar o resultado.
@@ -400,6 +575,16 @@ Nunca sanitize por remoção sem revalidar o resultado.
 
 **Causa:** assinar todas de uma vez é conveniente — e cada URL é uma autorização de
 escrita transferível enquanto vale.
+
+**O que é uma URL pré-assinada:** é um endereço que já carrega, embutida, a autorização
+para uma operação específica no storage. Quem tiver a URL pode executar aquela operação —
+não há login, não há cookie, não há como saber se quem usou é quem pediu. Ela é a
+credencial. Por isso o prazo curto não é detalhe: é o único limite real.
+
+**Exemplo concreto:** um usuário sobe 200 fotos de uma vez. O front pede as 200
+assinaturas no começo, com validade de 5 minutos. As 40 primeiras sobem rápido; a conexão
+oscila; quando chega na foto 150, aquelas assinaturas já expiraram e o lote falha no fim —
+depois de o usuário ter esperado o tempo todo.
 
 **Regra:** expiração curta (~60s) e uma assinatura por arquivo, solicitada imediatamente
 antes daquele envio. Valide o nome do arquivo no servidor (`..`, `/` inicial) antes de
@@ -415,6 +600,10 @@ tamanho informado.
 **Causa:** a URL pré-assinada amarra método, chave e content-type, mas não o tamanho do
 corpo. O tamanho informado pelo cliente é declaração, não fato.
 
+**Exemplo concreto:** o front diz "vou enviar 1 MB", sua rota confere contra o limite de
+10 MB e assina. O upload vai direto do navegador para o storage, sem passar por você — e
+carrega 2 GB. Sua contabilidade de cota registrou 1 MB.
+
 **Regra:** depois do envio, confirme com uma chamada HEAD no objeto e grave o tamanho
 que o **storage** reporta; só então contabilize a cota.
 
@@ -428,6 +617,16 @@ lindamente — e qualquer falha de autenticação nele vira comprometimento tota
 **Causa:** montar o socket do Docker permite criar containers privilegiados; montar o
 sistema de arquivos do host com escrita permite alterar chaves de SSH, agendamentos e regras
 de elevação. Rede em modo host remove o isolamento restante.
+
+**Por que o socket equivale a root:** quem fala com o socket do Docker pode pedir ao daemon
+— que roda como root — a criação de um novo container privilegiado montando qualquer
+diretório do host. Não existe "acesso parcial" ao socket: conseguir escrever nele já é
+conseguir executar qualquer coisa como root na máquina inteira.
+
+**Exemplo concreto:** você sobe um painel próprio para reiniciar seus containers pelo
+navegador. É um projeto interno, então a autorização é uma comparação simples com o seu
+e-mail. Se esse painel tiver uma única falha de autenticação, o atacante não ganha "acesso
+ao painel" — ganha o servidor.
 
 **Regra:** qualquer container com essas permissões deve ser tratado como o próprio host —
 autenticação forte e auditada, nunca exposto sem proxy autenticado, e a checagem de
@@ -449,6 +648,10 @@ desatualizado e sem teste de restauração.
 
 **Causa:** confunde-se confidencialidade com disponibilidade. Backup existe para você
 **recuperar** algo; criptografia protege contra alguém **ler** algo.
+
+**Exemplo concreto:** o backup do banco da loja está num contêiner cifrado, no mesmo disco
+do servidor, atualizado pela última vez há 4 meses, e ninguém nunca tentou restaurar. O
+disco morre. A criptografia funcionou perfeitamente: ninguém leu os dados — nem você.
 
 **Regra:** se o disco já tem cifragem de volume, um contêiner adicional acrescenta pouco
 contra roubo — e acrescenta um jeito novo de perder tudo (senha esquecida, cabeçalho

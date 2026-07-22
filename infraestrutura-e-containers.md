@@ -9,6 +9,23 @@ out`. Enviar de dentro do servidor não funciona, mas o serviço de e-mail parec
 (antispam). O gargalo é a entrega final, não a autenticação — por isso "logar com uma conta
 válida" não resolve.
 
+**Por que existem duas portas:** a 25 é a porta em que servidores de e-mail conversam
+**entre si** para a entrega final. A 587 é a porta em que um cliente autenticado **submete**
+uma mensagem para um servidor que vai entregá-la por ele — isso é um relay. Como a 587 exige
+autenticação, ela não serve para spam em massa e por isso quase nunca é bloqueada. Bloquear
+a 25 de saída não impede você de mandar e-mail; impede você de entregar diretamente.
+
+```mermaid
+flowchart LR
+    A[Sua aplicacao na VPS] -->|porta 25 - bloqueada<br/>timeout| X[Servidor de destino]
+    A -->|porta 587 com autenticacao| R[Servico de e-mail<br/>transacional - relay]
+    R -->|porta 25 liberada<br/>e com reputacao| X
+```
+
+**Exemplo concreto:** o formulário de contato do site nunca entrega. Nos logs, a fila tem
+80 mensagens presas, todas com timeout. Você troca a senha, cria uma conta nova, revisa o
+código de envio — nada muda, porque nenhuma das tentativas chegou a sair da máquina.
+
 **Regra:** configure relay para um serviço de e-mail transacional na porta 587 com SASL, ou
 use a API HTTPS do provedor. Pedir desbloqueio da 25 ainda deixa a entregabilidade ruim por
 reputação de IP. Verifique também se a conta está fora do modo sandbox antes de projetar o
@@ -24,6 +41,20 @@ fluxo.
 
 **Causa:** configuração parcial, ou dois registros SPF separados no apex — o que invalida os
 dois.
+
+**Os três registros, em uma frase cada:** SPF é a lista de quem tem permissão de enviar em
+nome do seu domínio; DKIM é a assinatura criptográfica que prova que a mensagem não foi
+alterada e saiu de quem diz ter saído; DMARC é a instrução do que fazer quando SPF ou DKIM
+falham. A regra de "um único SPF" existe porque a especificação manda o receptor tratar
+domínio com dois registros `v=spf1` como erro permanente — e aí nenhum dos dois vale.
+
+**Exemplo concreto:** o domínio já tinha um SPF do serviço de e-mail corporativo. Você
+adiciona um segundo para o serviço transacional do site. A partir desse momento os e-mails
+de **ambos** passam a cair em spam. O certo é um registro só, com os dois `include:`:
+
+```
+v=spf1 include:servico-a.exemplo include:servico-b.exemplo ~all
+```
 
 **Regra:** publique os CNAMEs de DKIM do provedor, **mescle** todos os `include:` num só
 registro SPF, e publique DMARC. Leia a zona antes de escrever para não derrubar registros
@@ -45,6 +76,11 @@ endereço em cadastros e materiais. `dig +short MX exemplo.tld`.
 **Sintoma:** subdomínios dinâmicos sobem sem certificado.
 
 **Causa:** a plataforma só emite certificado curinga se ela controlar o DNS daquele nível.
+
+**Exemplo concreto:** cada loja do seu produto ganha um endereço próprio do tipo
+`nome-da-loja.lojas.exemplo.com`. Como as lojas nascem a cada minuto, não dá para pedir um
+certificado por nome — é preciso um curinga para `*.lojas.exemplo.com`. E a plataforma só
+consegue emiti-lo se você delegar a subzona `lojas` inteira para os servidores dela.
 
 **Regra:** crie um registro NS para a subzona apontando para os servidores da plataforma.
 **Apague antes o registro A ou curinga anterior daquele nome** — ele conflita e a API recusa
@@ -71,8 +107,42 @@ zona antes de escrever, para não apagar registros de outros serviços.
 **Causa:** um container em restart loop aparece como "Running" durante cada tentativa.
 Checar poucos segundos depois do start pega exatamente essa janela.
 
+**O que é um restart loop:** com política de reinício automática, um container que morre é
+recriado imediatamente. Se ele morre sempre — variável faltando, porta ocupada, migração que
+falha —, o ciclo se repete indefinidamente. Durante os segundos em que o processo está
+subindo antes de morrer, o estado reportado é legitimamente "Running". Ou seja: você não
+está lendo um estado errado, está lendo um estado verdadeiro no instante errado.
+
+```mermaid
+sequenceDiagram
+    participant P as Pipeline
+    participant D as Docker
+    participant C as Container
+    P->>D: docker run
+    D->>C: sobe o processo
+    P->>D: docker inspect - poucos segundos depois
+    D-->>P: Running
+    Note over P: pipeline declara sucesso
+    C--xD: processo morre
+    D->>C: reinicia
+    Note over C: o ciclo se repete para sempre
+```
+
+**Exemplo concreto:** o deploy verifica o estado 3 segundos depois de subir. O container
+leva 5 segundos para morrer por causa de uma variável de banco faltando. O pipeline fica
+verde em todos os 40 deploys do dia, e ninguém descobre até um usuário reclamar.
+
 **Regra:** valide com requisição HTTP real esperando 200, contra endereço IPv4 literal, com
 algumas tentativas espaçadas.
+
+```bash
+for i in 1 2 3 4 5; do
+  code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/health)
+  [ "$code" = "200" ] && exit 0
+  sleep 5
+done
+exit 1
+```
 
 ---
 
@@ -84,9 +154,24 @@ meses e um dia quebra com "flag desconhecida".
 **Causa:** o CLI não está no runtime, então `npx` baixa a **última major** publicada — que
 pode ter removido a flag que seu comando usa.
 
+**O que o `npx` faz de verdade:** se o pacote existe localmente, ele o executa; se não
+existe, ele **baixa da internet** a versão mais recente e executa. É esse segundo caminho
+que morde. Dentro de um container de produção enxuto, o pacote quase nunca está lá — então
+todo start vira um download, e todo download traz a versão publicada naquele dia.
+
+**Exemplo concreto:** o entrypoint chama `npx <cli-do-orm> migrate deploy`. Funcionou por oito
+meses. Numa terça, o mantenedor publica uma major nova, o container reinicia por qualquer
+motivo banal, baixa a versão nova e morre com "flag desconhecida". Você não mudou uma linha
+de código, e o site está fora.
+
 **Regra:** copie o CLI para a imagem e invoque o binário local por caminho explícito. Fixe
 versões no manifesto. Regra geral: `npx` em entrypoint é dependência de rede mais versão
 flutuante.
+
+```dockerfile
+COPY --from=build /app/node_modules/.bin/ferramenta /app/node_modules/.bin/ferramenta
+CMD ["/app/node_modules/.bin/ferramenta", "migrate", "deploy"]
+```
 
 **Como verificar:** `docker logs --tail 50 <container>` mostra o mesmo erro em ciclo.
 
@@ -99,6 +184,17 @@ mesmo funcionando na máquina do desenvolvedor.
 
 **Causa:** pacotes que falam com o SO em baixo nível não têm binário pré-compilado para
 toda combinação de plataforma e versão, e caem para compilar do fonte.
+
+**O que é um módulo nativo:** a maior parte dos pacotes é só código interpretado, que roda
+igual em qualquer lugar. Um módulo nativo contém código C/C++ que precisa virar binário para
+aquele sistema operacional, arquitetura e versão de runtime específicos. Os autores publicam
+binários prontos para as combinações mais comuns; quando a sua não está na lista, o
+instalador tenta compilar — e aí precisa de compilador, `make` e Python presentes na imagem.
+Na sua máquina isso já existe há anos; numa imagem base enxuta, não existe nada.
+
+**Exemplo concreto:** o pacote de processamento de imagem instala em 5 segundos no seu
+notebook e falha na imagem `slim` com um erro de mil linhas terminando em `gyp ERR!`. Não é
+o pacote que quebrou: é a sua máquina que tinha o compilador instalado e a imagem não tem.
 
 **Regra:** instale compilador, `make` e Python na imagem **antes** do install. Melhor
 ainda: pré-construa uma imagem base com as dependências pesadas já instaladas e rebaseie a
@@ -113,6 +209,21 @@ aplicação nela — corta ordens de magnitude do tempo de build.
 **Causa:** build de aplicação moderna é o pico de RAM do ciclo de vida do projeto, e VPS
 baratas dimensionam RAM para o regime permanente.
 
+**O que é swap:** é um pedaço de disco que o sistema usa como se fosse memória quando a RAM
+acaba. Ele impede o desfecho brutal — o kernel matando processos por falta de memória —, mas
+disco é ordens de magnitude mais lento que RAM. Com swap, o build que morreria em 2 minutos
+passa a terminar em 30, e durante esses 30 minutos a máquina inteira fica arrastada, porque
+está movendo páginas entre RAM e disco o tempo todo.
+
+**Exemplo concreto:** a VPS de 2 GB atende a loja com folga o ano inteiro, usando 600 MB. O
+build consome 3 GB por 90 segundos, uma vez por deploy. Você dimensionou a máquina para o
+regime permanente e ela morre no pico — que é raro, previsível e nem precisava acontecer ali.
+
+```bash
+fallocate -l 2G /swapfile && chmod 600 /swapfile
+mkswap /swapfile && swapon /swapfile
+```
+
 **Regra:** crie swap como rede de segurança — mas entenda que ele troca "morrer" por "ficar
 muito lento", ainda estressando a CPU que deveria atender clientes. A solução real é não
 compilar na máquina de produção.
@@ -123,6 +234,11 @@ compilar na máquina de produção.
 
 **Sintoma:** um deploy ou restart apaga jobs em andamento sem rastro; o usuário fica
 esperando para sempre.
+
+**Exemplo concreto:** a exportação do relatório leva 4 minutos e guarda o progresso numa
+variável do processo. Você faz um deploy de correção de typo no meio dela. O processo novo
+sobe sem saber que existia um job, e a tela do usuário continua girando até ele desistir —
+não há erro, não há log, não há nada.
 
 **Regra:** persista estado de job (fila, progresso, resultado) fora do processo. Enquanto
 isso não existir, documente em local visível "não reiniciar com job ativo" e verifique antes
@@ -150,6 +266,11 @@ nas tabelas.
 **Causa:** ferramentas de linha de comando devolvem strings formatadas (`12.5%`, `1.2GiB`).
 Bibliotecas de gráfico precisam de número; string vira `NaN` ou zero.
 
+**Exemplo concreto:** a tabela mostra "1.2GiB" e "512MiB" corretamente, porque texto é texto.
+O gráfico ao lado fica com todas as barras rentes ao chão. O bug parece ser do componente de
+gráfico, mas o dado nunca foi numérico — e, de quebra, ordenar por essa coluna colocaria
+"512MiB" acima de "1.2GiB", porque a comparação é alfabética.
+
 **Regra:** normalize na camada de API — remova símbolo, converta para uma base única e
 devolva número puro. A unidade volta só no rótulo da interface.
 
@@ -161,6 +282,16 @@ devolva número puro. A unidade volta só no rótulo da interface.
 
 **Causa:** arquiteturas multi-provedor separam armazenamento de arquivos, processamento e
 metadados em serviços diferentes.
+
+```mermaid
+flowchart TD
+    U[Upload do usuario] --> A[Provedor A<br/>guarda o arquivo binario]
+    U --> B[Provedor B<br/>processa e gera derivadas]
+    U --> C[Provedor C<br/>guarda os metadados]
+    Q[Onde esta meu dado?] -.-> A
+    Q -.-> B
+    Q -.-> C
+```
 
 **Regra:** mantenha um diagrama de uma tela por sistema dizendo qual provedor guarda o quê.
 Ao investigar, primeiro identifique o dono do dado.
@@ -174,6 +305,11 @@ defeituosa.
 
 **Causa:** foi clique humano. Em aplicações com ações de servidor, cada clique aparece como
 uma requisição na rota da própria página, com timestamp.
+
+**Exemplo concreto:** trinta produtos aparecem como "inativos" numa manhã. A suspeita
+imediata é um job de sincronização com bug. Os logs mostram trinta requisições na rota do
+painel entre 9h12 e 9h14, todas da mesma sessão: alguém selecionou tudo e clicou em
+desativar. Um minuto de log economizou meio dia de leitura de código correto.
 
 **Regra:** consulte os logs de runtime primeiro. Três requisições no mesmo minuto provam a
 origem em um minuto e evitam horas depurando código correto. Retenção curta de log é motivo
@@ -189,9 +325,19 @@ arriscando derrubar produção.
 **Causa:** o inventário citava só um host; havia outro, com folga, que não estava
 documentado.
 
+**Exemplo concreto:** o documento de infraestrutura lista um servidor. Você começa a subir
+o ambiente novo nele e vê 90% de memória em uso. Só ao rodar `free -m` em tudo que responde
+é que aparece um segundo host, com 80% de RAM livre, pago há meses e usado por um único
+serviço esquecido.
+
 **Regra:** antes de recomendar onde rodar qualquer coisa nova, liste os hosts existentes e
 meça memória e disco em **todos** os candidatos. Depois, atualize o documento: a lacuna que
 enganou você vai enganar o próximo.
+
+```bash
+free -m | awk 'NR==2 {print "RAM livre:", $7, "MB"}'
+df -h --output=target,pcent,avail / /var
+```
 
 ---
 
@@ -201,6 +347,11 @@ enganou você vai enganar o próximo.
 
 **Causa:** muitos "X mil requisições grátis por mês" são benefício de conta nova, não
 permanente — e frequentemente não cobrem o armazenamento associado.
+
+**Exemplo concreto:** você calcula o preço do seu produto assumindo 20 mil chamadas grátis
+por mês. No décimo terceiro mês da conta a franquia some, as 20 mil chamadas passam a ser
+cobradas integralmente, e a margem que você prometeu ao cliente vira prejuízo — com o preço
+já publicado.
 
 **Regra:** ao repassar custo, use **zero** de franquia por padrão e deixe configurável.
 Errar cobrando a menos é pior que cobrar a mais. E meça o custo em vez de estimar: registre
