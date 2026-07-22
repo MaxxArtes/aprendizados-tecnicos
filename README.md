@@ -1,21 +1,34 @@
 # Aprendizados técnicos
 
-Armadilhas, causas-raiz e regras acumuladas construindo e operando software. Cobre
-infraestrutura, backend, frontend, dados, IA e o que mais vier — o escopo é "qualquer coisa
-técnica que custou tempo para descobrir e vale não redescobrir".
+**Este repositório reúne o que eu aprendi construindo e operando software, e está aberto para
+qualquer pessoa, em qualquer nível.**
 
-## 👉 [Comece aqui](COMECE-AQUI.md)
+São os erros que cometi, as causas que levei horas para encontrar e as regras que ficaram no
+lugar. Publiquei porque quase nada disto aparece em tutorial: são problemas que só surgem
+quando o código sai da sua máquina e encontra produção, usuários e outras pessoas — e quando
+surgem, normalmente você está sozinho, com pressa, colando uma mensagem de erro na busca.
 
-**Para quem isto foi escrito:** quem está na faculdade, estagiando, no primeiro emprego, ou
-aprendendo por conta. A maior parte destes erros não está em tutorial nenhum — eles aparecem
-só quando o código sai da sua máquina e encontra usuários, produção e outras pessoas.
+Se algo aqui poupar a madrugada de alguém, já valeu.
 
-Não leia na ordem, e não leia tudo. É uma **referência** para consultar quando você já está
-com um problema na tela. O [Comece aqui](COMECE-AQUI.md) organiza as lições por **o que você
-está fazendo** — "funciona na minha máquina e quebra quando eu subo", "botei no ar e agora
-tem gente usando", "vou mexer com senha e chave de API" — em vez de por categoria técnica.
+Cobre infraestrutura, backend, frontend, dados, IA e o que mais vier. O escopo é simples:
+qualquer coisa técnica que custou tempo para descobrir e vale não redescobrir.
 
-Se esbarrar num termo desconhecido, o [glossário](GLOSSARIO.md) explica em uma linha.
+## Por onde entrar
+
+**Está começando** — faculdade, estágio, primeiro emprego, aprendendo por conta?
+👉 **[Comece aqui](COMECE-AQUI.md)**, que organiza as lições por situação ("funciona na minha
+máquina e quebra quando eu subo", "botei no ar e agora tem gente usando").
+
+**Já trabalha com isso?** O [índice por sintoma](INDICE-POR-SINTOMA.md) costuma ser o caminho
+mais curto: procure pelo que está vendo na tela.
+
+**Esbarrou num termo que não conhece?** O [glossário](GLOSSARIO.md) tem 111 verbetes. Os
+termos técnicos foram mantidos como são usados no mercado, de propósito — a ideia é que
+ninguém fique de fora por causa de vocabulário, não que o vocabulário desapareça.
+
+Não leia na ordem e não leia tudo. É uma referência, não um curso.
+
+---
 
 Cada lição segue o mesmo formato:
 
@@ -31,13 +44,11 @@ pelo **sintoma** é como isto se usa às 2 da manhã.
 
 ## Índice
 
-**[Comece aqui](COMECE-AQUI.md)** — porta de entrada, organizada por situação. Se você
-está começando, é por aqui.
-
-**[Índice por sintoma](INDICE-POR-SINTOMA.md)** — 208 sintomas em ordem alfabética, cada um
-linkado para a lição. Para quando você já sabe descrever o que está vendo.
-
-**[Glossário](GLOSSARIO.md)** — os termos usados nas lições, em uma linha cada.
+| Guia | |
+|---|---|
+| [Comece aqui](COMECE-AQUI.md) | porta de entrada, organizada por situação |
+| [Índice por sintoma](INDICE-POR-SINTOMA.md) | 208 sintomas, para quando você já sabe nomear o problema |
+| [Glossário](GLOSSARIO.md) | 111 termos, em uma linha cada |
 
 **Fundamentos e operação**
 
