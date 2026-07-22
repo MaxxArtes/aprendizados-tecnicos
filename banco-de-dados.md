@@ -7,9 +7,9 @@ transação. Ou o inverso.
 
 **Causa:** integrações de Postgres gerenciado criam meia dúzia de URLs para o mesmo banco,
 variando em dois eixos: passa pelo pooler ou não, e quais parâmetros de query carrega
-(`sslmode`, `channel_binding`, `connect_timeout`). Nomes diferentes podem ter o mesmo
-valor, e **nomes sinônimos podem ter valores diferentes** — `DATABASE_URL_UNPOOLED` e
-`POSTGRES_URL_NON_POOLING` não são a mesma coisa, apesar do nome sugerir.
+(`sslmode`, timeout de conexão, ligação de canal). Nomes diferentes podem ter o mesmo valor,
+e **nomes sinônimos podem ter valores diferentes** — duas variáveis chamadas `_UNPOOLED` e
+`_NON_POOLING` podem não ser a mesma coisa, apesar do nome sugerir.
 
 **Regra:** runtime da aplicação usa a URL **com** pooler; migrations e DDL usam a **sem**
 pooler — pooler em modo transaction quebra transação longa e statement preparado. A
@@ -234,15 +234,16 @@ remova a lógica — mas mantenha uma asserção de unicidade no build.
 
 ---
 
-## Valor fixo por período cabe numa tabela por-item se for distribuído
+## Valor global do período cabe numa tabela por-item se for distribuído
 
-**Sintoma:** um valor definido por dia precisa aparecer numa tabela cuja granularidade é
-por documento — e qualquer soma dá o valor multiplicado pela quantidade de linhas.
+**Sintoma:** um valor único do período (uma taxa mensal de plataforma, por exemplo) precisa
+aparecer numa tabela cuja granularidade é por transação — e qualquer soma dá o valor
+multiplicado pela quantidade de linhas.
 
 **Regra:** divida o valor do período pela quantidade de linhas daquele período e grave a
 fração em cada linha. A soma bate exatamente em **qualquer** agrupamento. Guarde o valor
-original numa tabela de parâmetro com coluna de vigência, aplicando por data o registro
-vigente mais recente — assim mudanças históricas não reescrevem o passado.
+original numa tabela de parâmetro datada, aplicando o registro vigente mais recente — assim
+mudanças futuras não reescrevem o passado.
 
 **Como verificar:** `SUM(coluna_distribuida)` agrupado por período deve dar exatamente o
 valor do parâmetro vezes o número de períodos.

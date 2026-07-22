@@ -177,10 +177,11 @@ caminho da função com upload assinado direto para o storage; (3) no cliente,
 
 ## Região do compute longe da região do banco é o gargalo real
 
-**Sintoma:** uma página administrativa leva 2,5 s. O instinto diz "roteamento".
+**Sintoma:** uma página administrativa leva alguns segundos. O instinto diz "roteamento".
 
-**Causa:** as funções rodavam num continente e o banco em outro (~120 ms por ida e volta).
-Uma página com 14 consultas, várias em série, multiplica isso.
+**Causa:** as funções rodavam num continente e o banco em outro — uma travessia
+intercontinental custa da ordem de 100 ms por ida e volta. Uma página com mais de uma dezena
+de consultas, várias em série, multiplica isso.
 
 **Regra:** (1) fixe a região das funções ao lado do banco, e faça isso **em arquivo de
 configuração versionado** — ele vence o painel, que pode continuar mostrando o valor
@@ -210,12 +211,12 @@ tolera origem distante.
 **Sintoma:** "navegação lenta" numa galeria.
 
 **Causa:** medindo em produção — a rota de listagem era dinâmica sem cache e refeita a cada
-volta (~1,4 s de spinner), e cada miniatura de ~300 px baixava o arquivo original de
-~470 KB.
+volta (mais de um segundo de spinner), e cada miniatura baixava o arquivo original inteiro,
+centenas de KB cada.
 
-**Regra:** gere derivadas no servidor (miniatura de ~500 px costuma cortar mais de 95% dos
-bytes), sirva a lista com cache de borda, e ofereça um parâmetro de "recarregar sem cache"
-para a área administrativa.
+**Regra:** gere derivadas no servidor — uma miniatura corta a maior parte dos bytes —, sirva
+a lista com cache de borda, e ofereça um parâmetro de "recarregar sem cache" para a área
+administrativa.
 
 ---
 
@@ -281,8 +282,8 @@ fases — deploy que tolera os dois formatos → migração → deploy que limpa
 está em violação.
 
 **Causa:** a restrição é de **termos de uso**, não de quota. "Comercial" costuma abranger
-qualquer ganho financeiro de qualquer envolvido — processar pagamento, ser pago para
-manter, e até solicitar doação.
+qualquer ganho financeiro de qualquer envolvido — processar pagamento, anunciar venda ou ser
+pago para hospedar e manter.
 
 **Regra:** separe a decisão em duas — cabe nos limites? é permitido pelos termos? A segunda
 decide. Note também que o plano gratuito costuma ter **teto rígido** (o projeto pausa)

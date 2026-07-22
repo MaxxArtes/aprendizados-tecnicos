@@ -186,8 +186,8 @@ real para manter observabilidade paga.
 **Sintoma:** você monta um ambiente novo no servidor que já está sufocado de memória,
 arriscando derrubar produção.
 
-**Causa:** o documento de contexto citava só um servidor — o mais antigo — e a existência de
-outro, mais folgado, não estava documentada.
+**Causa:** o inventário citava só um host; havia outro, com folga, que não estava
+documentado.
 
 **Regra:** antes de recomendar onde rodar qualquer coisa nova, liste os hosts existentes e
 meça memória e disco em **todos** os candidatos. Depois, atualize o documento: a lacuna que

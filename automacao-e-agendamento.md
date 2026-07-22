@@ -16,7 +16,7 @@ avançou?" em vez de "achei algum erro?".
 
 ## O modo de morte mais comum de automação é a credencial expirar
 
-**Sintoma:** 15 jobs vermelhos de uma vez; parece que a rede, o banco ou o servidor caiu.
+**Sintoma:** vários jobs vermelhos de uma vez; parece que a rede, o banco ou o servidor caiu.
 
 **Causa:** falha de infraestrutura costuma ser parcial e heterogênea. Expiração de
 credencial derruba tudo que compartilha o mesmo segredo, simultaneamente e com mensagem
@@ -152,13 +152,13 @@ concorrentes.
 **Sintoma:** pipeline **verde**, mas o passo de espelhamento não gravou nada; o erro é um
 `EndpointConnectionError` perdido no meio do log.
 
-**Causa:** a variável foi definida no nível de grupo com o nome de serviço do compose (que
-só resolve dentro daquela rede). Em job que roda o processo direto no runner, esse nome não
-existe. E o passo era best-effort, então não derrubou o build.
+**Causa:** a variável foi definida no escopo mais amplo com um nome que só resolve dentro de
+uma rede privada. Em job que roda o processo direto no runner, esse nome não existe. E o
+passo era best-effort, então não derrubou o build.
 
-**Regra:** variáveis com endereço de rede interna nunca vão no nível de grupo. Crie
-variável de **projeto** com a URL externa — a de projeto sobrescreve a de grupo. E qualquer
-passo não-fatal precisa logar erro visível.
+**Regra:** variáveis com endereço de rede interna nunca vão no escopo amplo. Defina no escopo
+do projeto, com o endereço externo — o escopo mais específico sobrescreve o mais amplo. E
+qualquer passo não-fatal precisa logar erro visível.
 
 **Como verificar:** confira o **efeito** (o objeto apareceu no destino?), nunca a cor do
 pipeline.

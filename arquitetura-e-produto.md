@@ -7,11 +7,11 @@ autenticação, latência — inviabiliza o desenho.
 
 **Causa:** construir camada por camada só valida a integração no fim.
 
-**Regra:** primeira entrega é uma fatia de ponta a ponta com um único caso: uma tabela
-agregada → um endpoint → um gráfico → uma incorporação. Ela exercita exatamente as
-restrições que podem matar o projeto. Quando a fonte de dados vive em rede privada, o padrão
-é expor **só a API** por túnel com HTTPS — nunca o banco — e servir de tabelas pré-calculadas
-em vez de consultar o modelo cru a cada requisição.
+**Regra:** primeira entrega é uma fatia de ponta a ponta com um único caso: uma consulta →
+um endpoint → uma visualização → o consumo por quem vai integrar. Ela exercita exatamente as
+restrições que podem matar o projeto. Quando a fonte de dados vive em rede privada, exponha
+**só a camada de API**, nunca o banco, e sirva de dados pré-agregados em vez de consultar o
+modelo cru a cada requisição.
 
 ---
 
@@ -37,8 +37,8 @@ os pendentes sem intervenção manual.
 
 ## Reprocessamento idempotente: proteja só o passo caro e não-idempotente
 
-**Sintoma:** a rotina de conclusão roda duas vezes e a mesma pessoa aparece duplicada na
-busca, ou a fatura é contada duas vezes.
+**Sintoma:** a rotina de conclusão roda duas vezes e o mesmo item aparece duplicado no
+índice de busca, ou a fatura é contada duas vezes.
 
 **Causa:** regerar derivados é inofensivo (sobrescreve). Já chamadas a serviços externos
 pagos que **acumulam estado** — indexação, cobrança, envio — não são idempotentes.
@@ -77,8 +77,8 @@ não devolva estoque nessa operação.
 
 ## Ligar um recurso não pode desligar o negócio
 
-**Sintoma:** o usuário clicou num botão novo "só para ver o que era" e tirou a própria
-operação do ar por uma hora.
+**Sintoma:** um clique exploratório num botão novo grava um valor que esconde o produto da
+loja — e as vendas param até alguém perceber.
 
 **Causa:** o botão "ativar controle de estoque" gravava **zero**, e zero significa esgotado,
 que significa produto oculto na loja. Sem confirmação e sem aviso.
@@ -179,13 +179,13 @@ mapeie o buraco real: às vezes só um subconjunto dos casos precisa de aviso.
 
 ---
 
-## APIs de autopreenchimento de plataformas de design exigem plano corporativo
+## Valide o tier comercial da API antes de desenhar o produto em cima dela
 
-**Sintoma:** plano de produto baseado em "preencher templates lindos automaticamente" morre
-na integração.
+**Sintoma:** um plano de produto que depende de integrar uma plataforma externa morre na
+fase de integração.
 
-**Causa:** essas APIs frequentemente exigem tier corporativo, autenticação por usuário final
-e revisão do app antes de publicar.
+**Causa:** APIs de plataformas com forte apelo visual costumam exigir tier corporativo,
+autenticação por usuário final e revisão do app antes de publicar.
 
 **Regra:** valide tier comercial, modelo de autenticação e processo de aprovação **antes** de
 desenhar o produto em cima. Alternativa controlada: renderizar HTML/CSS próprio e converter
@@ -226,8 +226,8 @@ quem é da área mas não é mão-na-massa.
 **Regra:** duas a quatro frases dizendo o que passou a funcionar, o que foi corrigido, o que
 falta e de quem depende. Evite nome de tabela, de repositório e número de linhas.
 
-> Ruim: "criadas as duas dimensões, 652 mil linhas."
-> Bom: "as bases de clientes e de fretes do relatório foram reconstruídas no novo ambiente e
-> já estão prontas para uso."
+> Ruim: "criadas as duas tabelas de dimensão, com centenas de milhares de linhas."
+> Bom: "as duas bases que faltavam foram reconstruídas no ambiente novo e já estão prontas
+> para os relatórios."
 
 Prepare esse texto **junto** com a entrega técnica — quem executou é quem consegue traduzir.

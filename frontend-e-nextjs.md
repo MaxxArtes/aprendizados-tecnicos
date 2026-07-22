@@ -155,7 +155,8 @@ navegador considera todos visíveis.
 
 ## Processamento de imagem em canvas congela a interface
 
-**Sintoma:** ao selecionar 200 fotos para upload, a página fica minutos sem responder.
+**Sintoma:** ao selecionar algumas centenas de fotos para upload, a página fica minutos sem
+responder.
 
 **Causa:** o canvas roda na mesma thread que pinta a tela.
 
@@ -383,7 +384,7 @@ por um critério robusto (dono ou flag), não por slug — slug muda.
 
 ## `title.template` faz sua marca "vampirizar" o nome do cliente
 
-**Sintoma:** toda página de inquilino aparece no buscador como "Nome do Cliente · Sua
+**Sintoma:** toda página de inquilino aparece no buscador como "Nome do Cliente — Sua
 Marca".
 
 **Regra:** use template no seu próprio conteúdo e título **absoluto** nas páginas de

@@ -252,24 +252,24 @@ chamadas de API.
 
 **Causa:** provedores de e-mail transacional emitem credenciais SMTP separadas.
 
-**Regra:** gere explicitamente as credenciais SMTP no console do provedor. Em alguns
-provedores a senha SMTP é uma **derivação HMAC** documentada da secret key com a região —
-uma função de ~15 linhas, determinística e re-derivável, que não precisa ser guardada.
+**Regra:** gere explicitamente as credenciais SMTP no console do provedor. Em alguns casos a
+senha SMTP é derivada deterministicamente da chave da conta — se for, ela é re-derivável a
+qualquer momento e não precisa ser guardada como segredo separado. Confira a documentação
+antes de tratá-la como valor independente.
 
 ---
 
 ## Tarefa agendada nunca usa credencial pessoal
 
-**Sintoma:** um bloco inteiro de jobs quebra de uma vez, num fim de semana, com erro de
-login.
+**Sintoma:** vários jobs quebram simultaneamente com erro de login.
 
-**Causa:** a credencial pessoal do desenvolvedor está sujeita a política de expiração de
-senha; a conta de serviço normalmente não.
+**Causa:** a credencial pessoal do desenvolvedor costuma ter validade limitada por política;
+a conta de serviço normalmente não.
 
 **Regra:** automação sempre com conta de serviço dedicada. Se herdar um job com
 credencial pessoal, migre antes que expire. Cuidado ao copiar valores entre arquivos:
-**comentário inline colado no valor** (`SENHA=xxx #---bot`) vira parte da senha em vários
-parsers de `.env`.
+**comentário inline colado no valor** (`SENHA=xxx   # conta de serviço`) vira parte da senha
+em vários parsers de `.env`.
 
 ---
 
@@ -422,17 +422,18 @@ que o **storage** reporta; só então contabilize a cota.
 
 ## Montar o socket do Docker e a raiz do host num container é dar root no host
 
-**Sintoma:** um painel web que mostra métricas e oferece terminal funciona lindamente — e
-qualquer falha de autenticação nele vira comprometimento total da máquina.
+**Sintoma:** um painel de administração com acesso ao daemon de containers funciona
+lindamente — e qualquer falha de autenticação nele vira comprometimento total da máquina.
 
-**Causa:** montar o socket do Docker permite criar containers privilegiados; montar `/`
-com escrita permite alterar `authorized_keys`, `crontab`, `sudoers`. Com rede em modo
-host, não sobra isolamento nenhum.
+**Causa:** montar o socket do Docker permite criar containers privilegiados; montar o
+sistema de arquivos do host com escrita permite alterar chaves de SSH, agendamentos e regras
+de elevação. Rede em modo host remove o isolamento restante.
 
-**Regra:** trate esse container como se fosse o próprio host — autenticação forte e
-auditada, nunca exposto sem proxy autenticado, e a checagem de autorização não pode ser
-um `if (email === "...")` no código. Prefira montar só o que é lido, em modo
-somente-leitura, e um agente separado de superfície mínima para ações privilegiadas.
+**Regra:** qualquer container com essas permissões deve ser tratado como o próprio host —
+autenticação forte e auditada, nunca exposto sem proxy autenticado, e a checagem de
+autorização não pode ser uma comparação literal de e-mail no código. Prefira montar só o que
+é lido, em modo somente-leitura, e um agente separado de superfície mínima para ações
+privilegiadas.
 
 **Como verificar:**
 ```bash

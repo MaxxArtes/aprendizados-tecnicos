@@ -71,9 +71,9 @@ em cada execução. Use quando o custo por chamada é baixo e a latência é o g
 
 **Sintoma:** você "enxuga" o prompt para gerar menos texto e a latência quase não muda.
 
-**Causa:** medições reais — a mesma saída de ~150 KB levou 284 s num modelo grande e 70 s
-num modelo pequeno; e uma saída quatro vezes menor no mesmo modelo não foi mais rápida.
-Cold start e latência do provedor dominam.
+**Causa:** medições reais — a mesma saída levou cerca de cinco minutos num modelo grande e
+cerca de um minuto num pequeno; e uma saída quatro vezes menor no mesmo modelo não foi mais
+rápida. Cold start e latência do provedor dominam.
 
 **Regra:** para ganhar velocidade, troque o modelo ou o caminho, não o tamanho da saída.
 Reduzir volume ainda vale — mas pelo peso entregue ao usuário, não pelo tempo de geração.
@@ -109,12 +109,12 @@ os casos que não cabem em template.
 
 ## Um loop de typecheck antes do build caro derruba a taxa de falha
 
-**Sintoma:** a maioria dos builds de código gerado por IA falha, cada um custando minutos.
+**Sintoma:** boa parte dos builds de código gerado por IA falha, cada um custando minutos.
 
 **Regra:** rode a checagem de tipos num container leve com dependências pré-instaladas,
 monte o código como volume somente-leitura, filtre apenas erros de sintaxe e devolva ao
-modelo para correção, com teto de iterações. Medido: taxa de falha de build de ~60% para
-~5%, pipeline quase pela metade.
+modelo para correção, com teto de iterações. Medido: a taxa de falha caiu de mais da metade
+dos builds para uma fração pequena, e o tempo total quase pela metade.
 
 ---
 

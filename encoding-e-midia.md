@@ -54,7 +54,7 @@ reproduzindo até os artefatos da compressão anterior.
 
 ## Recomprimir JPEG frequentemente **aumenta** o arquivo
 
-**Sintoma:** o painel de otimização mostra "2,9 MB → 4,1 MB" e ninguém entende.
+**Sintoma:** o painel de otimização mostra algo como "3 MB → 4 MB" e ninguém entende.
 
 **Causa:** arquivos que saem de câmera ou editor já vêm comprimidos (tipicamente qualidade
 ~85). Recodificar com qualidade **maior** que a original decodifica para pixels crus e
@@ -86,8 +86,9 @@ geração. Em pipeline que codifica centenas de arquivos, o encode domina o cust
 **Sintoma:** o time quer "otimizar" um acervo de imagens, sem saber para que elas são
 usadas.
 
-**Causa:** uma imagem de 4000×6000 impressa a dois metros dá ~51 dpi — sem folga nenhuma.
-Cada pixel é consumido pela ampliação, e artefato de JPEG **cresce** com a ampliação:
+**Causa:** faça a conta antes de decidir — pixels da maior dimensão divididos pela largura
+impressa em polegadas. Uma foto de câmera ampliada para alguns metros cai facilmente para
+algumas dezenas de dpi, sem folga nenhuma. E artefato de JPEG **cresce** com a ampliação:
 invisível na tela, quadriculado no papel.
 
 **Regra:** decida compressão pelo destino do arquivo, não pelo peso. Sirva uma escada de
@@ -115,8 +116,8 @@ por cento.
 
 ## Não extrapole tamanho de acervo a partir de amostra pequena
 
-**Sintoma:** você calibra com 3 itens, encontra uma razão de 0,82, promete 480 MB — e o
-resultado real é 580 MB, acima da faixa que deu como garantida.
+**Sintoma:** você calibra com poucos itens, encontra uma razão em torno de 0,8, promete um
+número — e o real vem cerca de 20% acima, fora da faixa que você deu como garantida.
 
 **Causa:** taxa de compressão varia muito com o conteúdo. Se a amostra pega um item grande
 que comprime bem, a razão fica enviesada. E acervos costumam ser dominados por poucos itens
@@ -125,5 +126,5 @@ grandes, então o erro não se dilui.
 **Regra:** para dimensionar espaço, use o tamanho que a própria origem reporta para o
 conjunto inteiro. Amostra serve para estimar **tempo**, não volume.
 
-**Como verificar:** compare a razão item a item, não só a agregada. Se ela varia de 0,80 a
-1,05 na amostra, não é uma constante que você possa aplicar ao todo.
+**Como verificar:** compare a razão item a item, não só a agregada. Se ela varia bastante
+entre os itens da amostra, não é uma constante que você possa aplicar ao todo.

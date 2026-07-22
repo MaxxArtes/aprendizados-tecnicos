@@ -50,8 +50,8 @@ esconde arquivos legítimos.
 
 ## Branch local rastreando upstream antigo inventa commits "não enviados"
 
-**Sintoma:** `git status` acusa "18 commits ahead" num repositório que você sabe estar
-sincronizado — e você quase reescreve o remoto por causa disso.
+**Sintoma:** `git status` acusa dezenas de "commits ahead" num repositório que você sabe
+estar sincronizado — e você quase reescreve o remoto por causa disso.
 
 **Causa:** o branch local ainda rastreava um branch remoto congelado meses atrás. A
 contagem é real, só que contra a referência errada.

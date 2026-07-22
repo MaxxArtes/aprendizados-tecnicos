@@ -3,7 +3,7 @@
 ## Headers HTTP são case-insensitive — `dict(response.headers)` quebra isso
 
 **Sintoma:** você pagina uma API, recebe 100 itens, o laço termina sem erro nenhum e
-você conclui que existem 100. Na verdade existem 189.
+você conclui que existem 100. Na verdade existem quase o dobro.
 
 **Causa:** a especificação diz que nome de header é case-insensitive, e servidores
 HTTP/2 costumam mandar tudo em minúsculo (`x-next-page`). O objeto de resposta da
@@ -69,13 +69,13 @@ eventos perdidos.
 **Sintoma:** a fila de entrega do provedor entra em backoff e eventos legítimos atrasam;
 ou erros 500 esporádicos num endpoint estável.
 
-**Causa:** quando duas aplicações compartilham a mesma conta no provedor, cada uma recebe
-os eventos da outra. Devolver 500 para o evento alheio é interpretado como falha e
-penaliza a fila inteira.
+**Causa:** quando mais de uma aplicação assina os eventos da mesma conta, cada uma recebe os
+eventos da outra. Devolver 500 para o evento alheio é interpretado como falha e penaliza a
+fila inteira.
 
-**Regra:** prefixe o identificador externo com um namespace da aplicação
-(`app::tipo::parâmetro`), ignore silenciosamente com **200** o que não for seu, e mantenha
-compatibilidade com referências antigas sem namespace. Use atualização em massa tolerante
+**Regra:** prefixe o identificador externo com um namespace da aplicação, ignore
+silenciosamente com **200** o que não for seu, e mantenha compatibilidade com referências
+antigas sem namespace. Use atualização em massa tolerante
 a zero linhas em vez de "buscar e falhar se não achar".
 
 ---
@@ -264,9 +264,9 @@ restrição e adicione limpeza periódica dos jobs finalizados, senão o process
 
 ## Timeout de TCP não prova firewall
 
-**Sintoma:** conexão a um banco remoto dá timeout de ~75s no servidor de automação
-enquanto o cliente gráfico do desenvolvedor conecta normalmente. Diagnóstico natural: "o
-firewall bloqueia".
+**Sintoma:** conexão a um banco remoto estoura o timeout no servidor de automação enquanto o
+cliente gráfico do desenvolvedor conecta normalmente. Diagnóstico natural: "o firewall
+bloqueia".
 
 **Causa:** a configuração estava errada — porta e usuário diferentes dos reais. Pacote
 para porta onde não há serviço produz timeout, exatamente a mesma assinatura de pacote

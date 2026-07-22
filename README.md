@@ -87,13 +87,15 @@ preferência de estilo ficam de fora.
 
 ## Sobre a origem
 
-Extraído de anotações de trabalho, documentação de projeto e histórico de sessões
-acumulados ao longo de aproximadamente um ano.
+Extraído de anotações técnicas, documentação de projeto e histórico de sessões acumulados ao
+longo de aproximadamente um ano.
 
-Nada aqui identifica empresa, cliente, servidor ou sistema. As lições foram separadas da
-história que as gerou de propósito: o valor está na armadilha, não em quem caiu nela. Onde
-o contexto era indispensável para a lição fazer sentido, ele foi substituído por uma
-descrição neutra ("um ERP de transporte", "um portal de associados").
+Nomes de empresa, cliente, produto, servidor, endereço e credencial foram removidos, e o
+contexto foi reduzido ao tipo de sistema — nunca a qual sistema. As lições estão separadas
+da história que as gerou de propósito: o valor está na armadilha, não em quem caiu nela.
 
-Aprendizados que não sobreviveram à anonimização — regra de negócio proprietária,
-topologia de infraestrutura, precificação — foram descartados em vez de disfarçados.
+Dito isso, este repositório é assinado e público, então vale ser explícito: **ele foi
+escrito assumindo que colegas, clientes e empregadores podem lê-lo.** Não é um documento
+anônimo e não pretende ser. Cada lição passou pelo teste de "eu diria isto numa conversa
+técnica com a pessoa envolvida presente" — e o que não passou ficou de fora, em vez de ser
+disfarçado.
