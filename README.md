@@ -1,8 +1,21 @@
 # Aprendizados técnicos
 
-Base de conhecimento pessoal: armadilhas, causas-raiz e regras acumuladas construindo e
-operando software. Cobre infraestrutura, backend, frontend, dados, IA e o que mais vier —
-o escopo é "qualquer coisa técnica que custou tempo para descobrir e vale não redescobrir".
+Armadilhas, causas-raiz e regras acumuladas construindo e operando software. Cobre
+infraestrutura, backend, frontend, dados, IA e o que mais vier — o escopo é "qualquer coisa
+técnica que custou tempo para descobrir e vale não redescobrir".
+
+## 👉 [Comece aqui](COMECE-AQUI.md)
+
+**Para quem isto foi escrito:** quem está na faculdade, estagiando, no primeiro emprego, ou
+aprendendo por conta. A maior parte destes erros não está em tutorial nenhum — eles aparecem
+só quando o código sai da sua máquina e encontra usuários, produção e outras pessoas.
+
+Não leia na ordem, e não leia tudo. É uma **referência** para consultar quando você já está
+com um problema na tela. O [Comece aqui](COMECE-AQUI.md) organiza as lições por **o que você
+está fazendo** — "funciona na minha máquina e quebra quando eu subo", "botei no ar e agora
+tem gente usando", "vou mexer com senha e chave de API" — em vez de por categoria técnica.
+
+Se esbarrar num termo desconhecido, o [glossário](GLOSSARIO.md) explica em uma linha.
 
 Cada lição segue o mesmo formato:
 
@@ -18,8 +31,13 @@ pelo **sintoma** é como isto se usa às 2 da manhã.
 
 ## Índice
 
-**➜ [Índice por sintoma](INDICE-POR-SINTOMA.md)** — 203 sintomas em ordem alfabética,
-cada um linkado para a lição. É por aqui que se entra quando há um problema na tela.
+**[Comece aqui](COMECE-AQUI.md)** — porta de entrada, organizada por situação. Se você
+está começando, é por aqui.
+
+**[Índice por sintoma](INDICE-POR-SINTOMA.md)** — 208 sintomas em ordem alfabética, cada um
+linkado para a lição. Para quando você já sabe descrever o que está vendo.
+
+**[Glossário](GLOSSARIO.md)** — os termos usados nas lições, em uma linha cada.
 
 **Fundamentos e operação**
 
