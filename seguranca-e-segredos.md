@@ -660,3 +660,33 @@ corrompido) e um atrito que atrapalha a atualização automática. Cifre quando 
 
 **Como verificar:** pergunte nesta ordem — existe segunda cópia? está atualizada? já
 testei restaurar? Só depois disso a criptografia entra na fila.
+
+---
+
+## Token de acesso granular pode ter permissão de ler arquivo mas não de listar
+
+**Sintoma:** você cria um token "só leitura" para uma automação, testa lendo um arquivo
+específico de um repositório e funciona (200). Em produção, a automação falha logo no começo:
+**403** ao tentar **listar** os repositórios do grupo.
+
+**Causa:** tokens de acesso granulares (fine-grained) não têm um único escopo "leitura" — têm
+permissões por recurso. O seu tinha permissão de **ler conteúdo de repositório** (por isso o
+arquivo veio), mas **não** a de **listar projetos** do grupo. São capacidades distintas; ter uma
+não implica a outra. A mensagem denuncia: `insufficient_granular_scope: requires ... [Project: Read]`.
+
+**Por que o teste passou e a produção falhou:** você validou o token na operação mais óbvia
+(ler um arquivo) e generalizou "o token lê, então lê tudo". Mas *descobrir o que existe*
+(listar) e *ler um item conhecido* são endpoints com permissões separadas no modelo granular.
+
+**Exemplo concreto:** um sync que primeiro lista `grupo/*` para achar os repositórios e depois
+baixa o `README` de cada um. O passo de listar toma 403; o de baixar tomaria 200. Solução sem
+ampliar o token: **eliminar a listagem** — trabalhar sobre uma lista fixa de nomes conhecidos e
+ler cada arquivo direto (a permissão que o token de fato tem).
+
+**Regra:** ao usar token granular, teste **cada tipo de operação** que a automação faz
+(listar ≠ ler ≠ escrever), não só uma. Se listar não é permitido, contorne com uma lista
+explícita em vez de ampliar o escopo do token.
+
+**Como verificar:** exercite separadamente o endpoint de **listagem** e o de **leitura de item**
+com o token, antes de depender dele. Um passa e o outro falha? É escopo granular, não credencial
+inválida.

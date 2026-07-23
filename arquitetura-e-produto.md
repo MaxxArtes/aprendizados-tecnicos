@@ -401,3 +401,37 @@ falta e de quem depende. Evite nome de tabela, de repositório e número de linh
 > para os relatórios."
 
 Prepare esse texto **junto** com a entrega técnica — quem executou é quem consegue traduzir.
+
+---
+
+## Carregamento rápido de dashboard vem de payload pequeno e cache, não de trocar o banco
+
+**Sintoma:** para um painel "carregar rápido", surge a proposta de reescrever a stack inteira:
+banco colunar dedicado (OLAP), API numa linguagem de altíssimo desempenho, biblioteca de gráfico
+de baixo nível. Muita engenharia antes de existir um gargalo medido.
+
+**Causa:** confunde-se "banco que agrega bilhões de linhas cruas em milissegundos" com "painel
+que carrega rápido". São problemas diferentes. Se os dados são **pré-agregados** (uma tabela
+pequena recalculada por um job periódico), a consulta já responde em milissegundos em qualquer
+banco relacional comum — o motor OLAP não acrescenta nada. E a linguagem da API só importa em
+concorrência altíssima; para consumo interno, o custo é a query mais a rede, não o runtime.
+
+**Por que a proposta soa convincente:** ela lista as ferramentas "mais rápidas do mercado", e
+cada uma é de fato excelente **no cenário para o qual foi feita** — volumes massivos, drill-down
+ao vivo sobre dados crus, milhares de requisições por segundo. Fora desse cenário, você paga a
+complexidade (mais um banco para manter, mais um pipeline para carregá-lo, uma linguagem que a
+equipe não domina) sem colher o ganho.
+
+**Exemplo concreto:** um painel que mostra faturamento por mês. Servir uma tabela de 12 linhas
+pré-somadas, com a resposta cacheada porque só muda uma vez por dia, carrega instantâneo — com o
+banco relacional que você já tem. Trocar por um banco colunar e reescrever a API em outra
+linguagem não faz esses 12 números chegarem mais rápido; só adiciona três sistemas para operar.
+
+**Regra:** o que dá "carregamento rápido" é **payload pequeno (pré-agregado) + cache + biblioteca
+de gráfico enxuta** — não o motor de banco nem a linguagem. Pré-agregue e cacheie primeiro; só
+troque de banco/linguagem quando um gargalo **medido** provar que precisa. Reserve o banco
+colunar embarcado (que talvez você já use no ETL) como passo intermediário antes de subir um
+servidor OLAP dedicado.
+
+**Como verificar:** meça o tempo real de resposta do endpoint com a tabela pré-agregada e cache.
+Se está em dezenas de milissegundos, o banco não é o gargalo — e a reescrita não teria retorno.
