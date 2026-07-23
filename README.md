@@ -22,7 +22,7 @@ máquina e quebra quando eu subo", "botei no ar e agora tem gente usando").
 **Já trabalha com isso?** O [índice por sintoma](INDICE-POR-SINTOMA.md) costuma ser o caminho
 mais curto: procure pelo que está vendo na tela.
 
-**Esbarrou num termo que não conhece?** O [glossário](GLOSSARIO.md) tem 111 verbetes. Os
+**Esbarrou num termo que não conhece?** O [glossário](GLOSSARIO.md) tem 122 verbetes. Os
 termos técnicos foram mantidos como são usados no mercado, de propósito — a ideia é que
 ninguém fique de fora por causa de vocabulário, não que o vocabulário desapareça.
 
