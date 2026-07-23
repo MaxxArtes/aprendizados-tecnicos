@@ -228,6 +228,20 @@ escrever SQL. Conveniente; esconde consultas caras, como carregar mil linhas par
 de segurança de qualquer fluxo que passa por várias etapas de rede.
 ↳ [arquitetura-e-produto.md](arquitetura-e-produto.md)
 
+**OLAP (processamento analítico)** — banco ou consulta feita para *analisar* grandes volumes
+(somar, agrupar, cruzar milhões de linhas), em oposição ao **OLTP**, o transacional do dia a dia
+(inserir um pedido, ler um cadastro). Bancos OLAP, como ClickHouse ou DuckDB, existem para
+relatório e dashboard, não para gravar cada clique.
+
+**Banco colunar** — banco que guarda os dados por **coluna** em vez de por linha. Para "somar o
+valor de 10 milhões de vendas" ele lê só a coluna `valor`, não a linha inteira — por isso é tão
+rápido em agregação, e ruim em alterar registro a registro. É a tecnologia por trás da maioria
+dos bancos OLAP.
+
+**Pré-agregação** — calcular o resultado (o total por mês, a média por rota) **antes** de a tela
+pedir, gravando numa tabela pequena que é lida pronta. Troca "processar na hora da consulta" por
+"processar uma vez, no ETL". É o que faz um painel responder em milissegundos sem banco especial.
+
 ---
 
 ## Deploy, build e infraestrutura
@@ -317,6 +331,16 @@ modo restrito em que alguns provedores colocam contas novas.
 **Multi-inquilino (multi-tenant)** — uma instalação só do sistema atendendo vários clientes,
 com os dados separados logicamente. Cada cliente é um "inquilino".
 
+**Reverse proxy** — servidor que fica **na frente** das suas aplicações e encaminha cada
+requisição para a certa, decidindo pelo domínio ou pelo caminho; costuma cuidar também de HTTPS
+e de filtros de acesso. Traefik, nginx e Caddy fazem esse papel. "Está atrás do proxy" quer
+dizer que ninguém fala direto com a aplicação — tudo passa por ele.
+
+**Crash loop (restart loop)** — quando um container ou processo morre logo ao iniciar e a
+política de reinício o sobe de novo, que morre de novo, sem parar: fica "tentando subir" sem
+nunca ficar de pé. No Docker o sintoma é o status `Restarting`; a causa está nos primeiros logs,
+antes da morte.
+
 ---
 
 ## Segurança
@@ -354,6 +378,11 @@ antes de revogar a velha, ou você derruba tudo que ainda usa a antiga.
 
 **Certificado (TLS)** — o arquivo que prova a identidade do seu domínio e permite HTTPS.
 Emitido por domínio; um novo subdomínio precisa do seu.
+
+**Token fine-grained (granular)** — credencial cujas permissões são recortadas por recurso e por
+ação (ler *este* repositório, mas não listar todos; escrever aqui, não ali), em vez de um escopo
+amplo do tipo "leitura de tudo". Mais seguro se vazar, mas exige conferir **cada** operação que a
+automação faz — ter permissão de ler um item não implica poder listar os itens.
 
 ---
 

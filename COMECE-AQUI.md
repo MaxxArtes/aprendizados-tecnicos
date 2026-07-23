@@ -25,6 +25,8 @@ o de produção são a mesma coisa. Eles não são, e as diferenças são sempre
 4. [`relation "x" does not exist`](banco-de-dados.md) — o mesmo problema visto do outro lado
 5. [Exceção lançada em Server Action é sanitizada em produção](frontend-e-nextjs.md) — em
    desenvolvimento a mensagem aparece; em produção some, e você fica sem diagnóstico
+6. [Imagem nginx com `USER` não-root entra em crash loop](infraestrutura-e-containers.md) —
+   sobe na sua máquina, mas no ar o container reinicia sem parar e o proxy responde 404
 
 > Se aparecer uma palavra que você não conhece, o [glossário](GLOSSARIO.md) tem todas em uma
 > linha cada.
