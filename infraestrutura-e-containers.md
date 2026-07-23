@@ -356,3 +356,99 @@ já publicado.
 **Regra:** ao repassar custo, use **zero** de franquia por padrão e deixe configurável.
 Errar cobrando a menos é pior que cobrar a mais. E meça o custo em vez de estimar: registre
 cada chamada paga como evento de uso.
+
+---
+
+## Redundância de dado de fonte viva se faz espelhando o destino, não re-executando
+
+**Sintoma:** você quer uma cópia local de segurança do que um pipeline grava num
+armazenamento remoto e pensa em rodar o mesmo pipeline localmente — mas as duas cópias do
+"mesmo dia" nunca batem, e você começa a desconfiar de corrupção.
+
+**Causa:** o pipeline extrai de uma **fonte viva**, que muda ao longo do dia. Duas execuções
+em horários diferentes fotografam estados diferentes da fonte; a cópia "redundante" diverge
+da original **por origem, não por defeito**.
+
+**Exemplo concreto:** um relatório "do dia 8" no sistema de origem continua ganhando e
+alterando registros depois da meia-noite. O pipeline oficial extraiu às 7h; você re-extrai
+às 15h para "ter uma cópia" e ela vem com mais linhas. Comparando arquivo a arquivo, os dois
+"dia 8" divergem — e você perde horas achando que é bug de pipeline.
+
+**Regra:** redundância de **dado** se faz copiando o artefato final (espelhar o destino:
+baixar o que já foi gravado), não reproduzindo o processo. Reserve a re-execução para
+redundância de **capacidade** (poder rodar se o executor cair), ciente de que ela gera dado
+novo, não idêntico. Para provar que a cópia é fiel, compare tamanho e hash **contra o
+destino** — nunca contra uma nova extração.
+
+```bash
+# fiel = comparar contra o destino (tamanho/hash), nao contra uma re-extracao
+aws s3api head-object --bucket destino --key caminho/arquivo   # tamanho + ETag
+md5sum copia_local/caminho/arquivo                             # bate com o ETag (parte unica)
+```
+
+---
+
+## Imagem nginx oficial com `USER` não-root entra em crash loop
+
+**Sintoma:** você sobe um site estático atrás de um reverse proxy e o container "sobe",
+mas o domínio devolve `404 page not found` do proxy — não a sua página. Um 404, não um 502:
+parece que a rota nem existe.
+
+**Causa:** o Dockerfile terminava com `USER 1000` (ou qualquer UID não-root) "por segurança".
+A imagem oficial do nginx precisa de root no processo master para criar `/var/cache/nginx/*`
+e bindar a porta 80 (portas abaixo de 1024 exigem privilégio). Sem isso:
+`[emerg] mkdir() "/var/cache/nginx/client_temp" failed (13: Permission denied)` → o processo
+morre → `restart: always` recria → **crash loop**. Container em loop não fica conectado à rede
+do proxy; o proxy não vê backend e, como não há rota registrada para aquele host, responde 404.
+
+**Por que 404 e não 502:** um 502/503 seria "tenho rota, mas o backend não responde". Um 404
+do proxy é "não tenho rota para esse host". O reverse proxy que descobre backends por container
+só registra a rota quando o container está **rodando e conectado à rede**. Um container em
+`Restarting` some da rede — então a rota nunca nasce.
+
+**Exemplo concreto:** você compara o container problemático com um que funciona:
+`docker network inspect proxynet` lista o do vizinho, mas **não** o seu — apesar de
+`docker inspect` mostrar o mesmo NetworkID nos dois. Essa é a pista: NetworkID igual, porém
+ausente da lista de conectados = o container não está *up* naquele instante.
+
+```dockerfile
+USER 1000:1000   # NÃO: nginx como UID arbitrário quebra o cache e o bind da porta 80
+# A imagem oficial já roda o master como root e os workers como 'nginx'. Remova a linha USER.
+```
+
+**Regra:** não coloque `USER <uid>` no Dockerfile de uma imagem nginx oficial servindo na
+porta 80 — ela foi feita para rodar o master como root e derrubar privilégio nos workers. Se
+precisa mesmo de não-root, use a variante `nginx-unprivileged` (escuta em 8080) e ajuste a
+porta no proxy.
+
+**Como verificar:** `docker ps -a` mostra `Restarting (1)`; `docker logs <container>` mostra o
+`[emerg] ... Permission denied`; `docker network inspect <rede>` **não** lista o container
+mesmo o NetworkID batendo em `docker inspect`.
+
+---
+
+## Middleware de proteção no reverse proxy é por-rota, não global
+
+**Sintoma:** você publica um serviço novo atrás do mesmo reverse proxy que já protege os
+outros, assumindo que a proteção de acesso "vale para todos". Testa de fora da rede e o serviço
+novo responde **200** — aberto — enquanto os antigos respondem **403**.
+
+**Causa:** o middleware que bloqueia acesso externo (allowlist de IP, autenticação) é aplicado
+**por roteador**, via label/config em cada serviço — não é um filtro global do entrypoint. Cada
+serviço novo nasce **sem** o middleware e, portanto, público. "Os outros estarem protegidos"
+não propaga nada para o novo.
+
+**Por que é fácil errar:** a proteção parece uma propriedade do proxy ("o proxy protege o
+domínio"), mas na verdade é uma propriedade de cada **rota** que o proxy conhece. Adicionar uma
+rota nova é adicionar uma rota **sem** as defesas, a menos que você repita o label do middleware.
+
+**Exemplo concreto:** dois serviços atrás do mesmo reverse proxy. De fora da rede,
+`curl https://antigo.exemplo.com` → 403 (middleware barra); `curl https://novo.exemplo.com`
+→ 200 (sem middleware). A diferença não está no proxy — está no label de middleware que só o
+antigo carrega.
+
+**Regra:** trate a proteção de acesso como parte do **contrato de cada rota**, não do proxy. Ao
+publicar um serviço, replique explicitamente o middleware; e valide de fora.
+
+**Como verificar:** `curl` do lado de fora da rede contra o serviço novo. **403 = protegido;
+200 = público.** Não confie em "está atrás do proxy protegido".

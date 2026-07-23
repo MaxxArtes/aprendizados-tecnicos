@@ -1,7 +1,7 @@
 # Índice por sintoma
 
 Você não lembra o nome da lição — lembra do que está vendo na tela. Procure aqui pelo que
-está acontecendo. 208 sintomas, em ordem alfabética.
+está acontecendo. 211 sintomas, em ordem alfabética.
 
 Nem toda lição tem sintoma; algumas são decisões de arquitetura, não bugs. Essas estão só
 nos arquivos temáticos, listados no [README](README.md).
@@ -107,6 +107,7 @@ nos arquivos temáticos, listados no [README](README.md).
 | o agente na máquina A conhece a decisão que o agente na máquina B registrou ontem — exceto que não conhece. | [Memória de agente não sincroniza entre máquinas](ferramentas-de-ia.md#memória-de-agente-não-sincroniza-entre-máquinas) | IA |
 | o build passa mesmo com erro de tipo, e o erro reaparece como falha em runtime, em produção. | [`ignoreDuringBuilds` / `ignoreBuildErrors` compram velocidade a crédito](deploy-e-build.md#ignoreduringbuilds-ignorebuilderrors-compram-velocidade-a-crédito) | Deploy |
 | o chat quebra por completo quando o usuário cola um link. | [Caminho especializado sem fallback derruba a funcionalidade inteira](ferramentas-de-ia.md#caminho-especializado-sem-fallback-derruba-a-funcionalidade-inteira) | IA |
+| o CI está verde, mas você não sabe se o número que o usuário final vê está atualizado hoje. | [Pipeline verde não prova que o dado chegou ao destino](automacao-e-agendamento.md#pipeline-verde-não-prova-que-o-dado-chegou-ao-destino) | Automação |
 | o código "nunca quebra por falta de variável" — e a chave real está no repositório, no bundle do cliente e no histórico do Git para sempre. | [`process.env.X \|\| "<valor real>"` é vazamento disfarçado de robustez](seguranca-e-segredos.md#processenvx-valor-real-é-vazamento-disfarçado-de-robustez) | Segurança |
 | o container entra em restart loop em produção; local funciona. Ou: roda por meses e um dia quebra com "flag desconhecida". | [Nunca chame o CLI do ORM via `npx` no entrypoint de um container](infraestrutura-e-containers.md#nunca-chame-o-cli-do-orm-via-npx-no-entrypoint-de-um-container) | Infra |
 | o conteúdo gerado referencia um produto, cupom ou registro que não existe. | [Valide contra o contexto todo ID que o modelo devolver](ferramentas-de-ia.md#valide-contra-o-contexto-todo-id-que-o-modelo-devolver) | IA |
@@ -173,6 +174,7 @@ nos arquivos temáticos, listados no [README](README.md).
 | um desastre destrói uma tabela pequena de parâmetros e a única forma de recuperar é perguntar às pessoas o que estava lá. | [Priorize no backup o dado digitado à mão](automacao-e-agendamento.md#priorize-no-backup-o-dado-digitado-à-mão) | Automação |
 | um identificador vindo da requisição acaba concatenado em `docker rm`, num caminho de arquivo ou numa configuração de proxy. | [Valide identificadores com allowlist antes que virem nome de container, caminho ou subdomínio](seguranca-e-segredos.md#valide-identificadores-com-allowlist-antes-que-virem-nome-de-container-caminho-ou-subdomínio) | Segurança |
 | um inventário "completo" que está truncado — e como nada falhou, o erro se propaga para todas as decisões seguintes. | [Valide o total da paginação contra um número independente](apis-e-integracoes.md#valide-o-total-da-paginação-contra-um-número-independente) | APIs |
+| um job de transferência termina com uns poucos erros (502, conexão resetada), mas nada do que já baixou está corrompido. | [Erro transitório de rede em job incremental e atômico se resolve no próximo ciclo](automacao-e-agendamento.md#erro-transitório-de-rede-em-job-incremental-e-atômico-se-resolve-no-próximo-ciclo) | Automação |
 | um JOIN ou uma chave estrangeira é rejeitado com essa mensagem. | [`operator does not exist: uuid = text` é erro de modelagem](banco-de-dados.md#operator-does-not-exist-uuid-text-é-erro-de-modelagem) | Banco |
 | um JOIN que "deveria casar 100%" casa 0%. Ou pior: casa 60%, e você acha que é problema de cobertura de dados. | [Dados legados vêm com espaço à esquerda e NBSP à direita](banco-de-dados.md#dados-legados-vêm-com-espaço-à-esquerda-e-nbsp-à-direita) | Banco |
 | um JSON gerado por script aparece com um byte nulo entre cada caractere e falha em `JSON.parse` ou `jq`; ou vem com BOM inesperado. | [Redirecionamento de saída gera UTF-16 ou ANSI e quebra parsers](windows-e-powershell.md#redirecionamento-de-saída-gera-utf-16-ou-ansi-e-quebra-parsers) | Windows |
@@ -214,5 +216,6 @@ nos arquivos temáticos, listados no [README](README.md).
 | você precisa de uma deploy key específica sem afetar os demais acessos SSH da máquina. | [Chave SSH por repositório vai em `core.sshCommand`](git.md#chave-ssh-por-repositório-vai-em-coresshcommand) | Git |
 | você precisa saber se o token que achou num arquivo é o mesmo do gerenciador de segredos, sem imprimir credencial em lugar nenhum. | [Compare segredos por hash, nunca expondo o valor](seguranca-e-segredos.md#compare-segredos-por-hash-nunca-expondo-o-valor) | Segurança |
 | você propõe rodar a automação com usuário restrito e escopo mínimo, e o dono da infraestrutura recusa porque isso derrota o propósito da ferramenta. | [Contra risco de acesso amplo, a resposta é reversibilidade — não restrição](ferramentas-de-ia.md#contra-risco-de-acesso-amplo-a-resposta-é-reversibilidade-não-restrição) | IA |
+| você quer uma cópia local de um armazenamento remoto e as duas cópias do "mesmo dia" nunca batem. | [Redundância de dado de fonte viva se faz espelhando o destino, não re-executando](infraestrutura-e-containers.md#redundância-de-dado-de-fonte-viva-se-faz-espelhando-o-destino-não-re-executando) | Infra |
 | você tem um valor único que vale para o período inteiro — uma taxa mensal, um custo fixo — e precisa que ele apareça numa tabela cuja granularidade é… | [Valor global do período cabe numa tabela por-item se for distribuído](banco-de-dados.md#valor-global-do-período-cabe-numa-tabela-por-item-se-for-distribuído) | Banco |
 | você troca a origem de um relatório e não tem como provar que melhorou. | [Troca de fonte de dados se valida em tabelas paralelas](automacao-e-agendamento.md#troca-de-fonte-de-dados-se-valida-em-tabelas-paralelas) | Automação |

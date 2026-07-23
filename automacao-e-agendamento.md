@@ -471,3 +471,62 @@ destino ao final.
 rsync -avc --delete --dry-run ./build/ usuario@host:/var/www/app/
 # revise a lista curta, confirme, e so entao repita sem --dry-run
 ```
+
+---
+
+## Erro transitório de rede em job incremental e atômico se resolve no próximo ciclo
+
+**Sintoma:** um job que transfere muitos arquivos termina com um punhado de erros — `502 Bad
+Gateway`, conexão resetada no meio do stream — e sai com código de falha, mas nada no que já
+baixou está corrompido.
+
+**Causa:** sob volume, proxies e armazenamentos de objeto devolvem erros esporádicos. Se cada
+arquivo é baixado de forma **atômica** (grava num temporário e só promove ao nome final
+depois de conferir o tamanho) e o job **pula o que já está igual**, esses erros deixam apenas
+os arquivos que falharam pendentes — nunca meia-cópia com nome definitivo.
+
+**Exemplo concreto:** um espelho de dezenas de gigabytes fecha com "7 erros" numa rede
+instável. Como o job é incremental, rodá-lo de novo lista tudo, pula os milhares já íntegros
+e baixa só os 7 que faltaram — zerando os erros. Sem atomicidade, um dos 7 teria virado
+arquivo pela metade com o tamanho "quase certo" e passaria despercebido para sempre.
+
+**Regra:** projete jobs de transferência para serem **idempotentes** (pule por tamanho ou
+hash) e **atômicos** (temporário → renomeia só após validar). Aí "COM_ERROS(n)" com n pequeno
+é operação normal: re-rodar resolve. Só investigue se o número não cair entre execuções.
+Nunca contabilize um erro transitório como perda antes de tentar de novo.
+
+```python
+tmp = destino + ".part"
+baixar(url, tmp)
+if os.path.getsize(tmp) == tamanho_esperado:
+    os.replace(tmp, destino)   # promocao atomica; retomavel no proximo ciclo
+else:
+    os.remove(tmp)             # deixa pendente, sem enganar a proxima rodada
+```
+
+---
+
+## Pipeline verde não prova que o dado chegou ao destino
+
+**Sintoma:** o painel de CI está todo verde, mas você não consegue afirmar que os números
+que o usuário final vê estão atualizados hoje.
+
+**Causa:** "job concluído com sucesso" e "dado fresco no destino" são fatos diferentes. Um
+pipeline pode sair com código 0 tendo gravado num lugar (um armazenamento intermediário) e
+não no banco que o painel lê; ou pode ter rodado num executor que só alcança metade da rede
+e nem chega ao destino final.
+
+**Exemplo concreto:** 21 de 22 pipelines verdes no CI. Mesmo assim, a prova de que a rodada
+do dia serviu para algo é abrir o **destino** (a tabela que o painel consome) e conferir o
+carimbo de última execução — e confirmar que o job rodou no executor que enxerga esse
+destino, não num que alcança só parte da infraestrutura.
+
+**Regra:** audite em três frentes independentes — (1) o CI está verde; (2) o executor certo
+rodou; (3) o dado no destino final está fresco. Verde no CI é condição **necessária, não
+suficiente**. Tenha uma consulta de frescor no destino como parte da rotina, não só o status
+do job.
+
+```sql
+-- o verde do CI tem que se refletir aqui, no destino que o painel le
+SELECT max(dt_execucao) AS ultima_carga FROM destino.tabela_do_painel;
+```
