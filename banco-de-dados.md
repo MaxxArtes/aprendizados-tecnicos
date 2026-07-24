@@ -423,3 +423,82 @@ sem cron, sem nada para falhar.
 O plano precisa ser argumento **obrigatório** da função de consumo — assumir o plano mais
 generoso por omissão é o erro caro; assumir o mais restrito é o padrão seguro. Devolva
 429/402 com o motivo e trate no cliente oferecendo o caminho degradado.
+
+---
+
+## Taxa agregada se recalcula do total somado, nunca pela média das taxas por linha
+
+**Sintoma:** A taxa de um grupo (ex.: percentual por região) não bate com `numerador_somado / denominador_somado`; grupos com muitas linhas pequenas ficam distorcidos.
+
+**Causa:** No `groupby` a agregação soma o numerador e o denominador, mas aplica `mean` numa coluna de taxa que já vinha pré-calculada por linha. Média de razões ≠ razão das somas, e a média ainda dá peso igual a uma linha gigante e a uma linha minúscula.
+
+**Exemplo concreto:** `groupby(["estado","ano"]).agg({"confirmados":"sum","obitos":"sum","letalidade":"mean"})` — o certo para o grupo é `sum(obitos)/sum(confirmados)`, não a média aritmética das taxas por município/dia.
+
+**Regra:** Agregue só os componentes brutos (`sum` do numerador e do denominador) e recalcule a taxa **depois** do `groupby`. Nunca leve uma coluna de razão pré-calculada para dentro de um `mean`.
+
+---
+
+## CSV de indicador de órgão público traz linhas de metadados no topo e coluna fantasma no fim
+
+**Sintoma:** `read_csv` joga descrição do dataset dentro do cabeçalho, todas as colunas desalinham, e ainda sobra uma coluna sem nome no final da tabela.
+
+**Causa:** Bases estatísticas de órgãos públicos prefixam algumas linhas de metadados antes do cabeçalho real e terminam cada linha com uma vírgula (gerando uma coluna vazia). Além disso publicam em **formato largo** — uma coluna por ano — que ferramenta de BI não consome direito.
+
+**Exemplo concreto:** `pd.read_csv(path, skiprows=4)` para pular os metadados, seguido de `melt(id_vars=[...], var_name="Ano")` para virar formato longo; a coluna-ano fantasma cai como `Ano` não-numérico e é descartada no `to_numeric(errors="coerce")`.
+
+**Regra:** Ao ingerir CSV de fonte estatística: `skiprows` para os metadados, descarte explicitamente a coluna fantasma do fim, e pivote largo→longo (`melt`) antes de carregar no BI. Não confie que o arquivo começa na linha 1.
+
+---
+
+## `CREATE DATABASE` sem qualificar o catálogo cai no catálogo default
+
+**Sintoma:** O schema é criado sem erro, mas um `SHOW DATABASES IN outro_catalogo` logo depois não lista ele — parece que "não criou".
+
+**Causa:** Num ambiente com múltiplos catálogos (lakehouse / catálogo de dev e prod), `CREATE DATABASE IF NOT EXISTS x` sem prefixo usa o catálogo **corrente/default** da sessão. Consultar um catálogo diferente procura no lugar errado. (De quebra, é `SHOW DATABASES`, no plural.)
+
+**Exemplo concreto:** `spark.sql("CREATE DATABASE IF NOT EXISTS schema_x")` seguido de `spark.sql("SHOW DATABASES IN catalogo_desenv").show()` — o schema foi para o catálogo default, a listagem do `catalogo_desenv` volta vazia.
+
+**Regra:** Qualifique sempre `catalogo.schema` no DDL, ou fixe o catálogo corrente (`USE CATALOG ...`) no início da sessão antes de criar e de consultar. Criar e verificar têm que apontar para o mesmo catálogo.
+
+---
+
+## Backend que usa a service_role do BaaS desliga o RLS — reaplique o escopo do tenant em toda query
+
+**Sintoma:** Um usuário de uma unidade/filial consegue ver dados de outra unidade em algumas telas, mesmo com o "login funcionando" e a maioria das telas filtrando certo.
+
+**Causa:** O backend acessa o banco com a chave secreta (service_role) do BaaS. Essa chave ignora o Row Level Security do Postgres, então nada no banco impede uma linha de vazar: a segurança por tenant passa a depender 100% de o código lembrar de aplicar o filtro em cada consulta. Uma rota que esquece o `.eq("unidade")` devolve o mundo inteiro.
+
+**Exemplo concreto:** A maioria das rotas faz `if ctx['nivel'] < 9: query = query.eq("id_unidade", ctx['id_unidade'])`, mas a rota que lista a árvore de cursos faz só `db.table("cursos").select("*, modulos(*, aulas(*))")` sem nenhum filtro — ou seja, o escopo do tenant é opcional e frágil, decidido rota a rota.
+
+**Regra:** Se o servidor usa a chave que bypassa RLS, trate o escopo do tenant como obrigação de código auditável: um único helper de query que já injeta o filtro de tenant, ou reative o RLS e faça o backend agir em nome do usuário. Nunca confie que "as outras rotas filtram".
+
+---
+
+## Ter um ORM não protege a query crua que você monta com template string
+
+**Sintoma:** O app usa um ORM com métodos seguros (`findOne`, operadores de filtro), mas um campo de busca vindo da URL permite injeção de SQL — aspas, `OR 1=1` ou `;` mudam o resultado ou vazam dados.
+
+**Causa:** Em algum ponto o código abandona o ORM e chama `query`/`raw` interpolando entrada do usuário direto na string SQL com template literal. A parametrização do ORM só vale nos métodos do ORM; a query montada à mão volta a ser concatenação vulnerável.
+
+**Exemplo concreto:** A rota de listagem monta `... WHERE LOWER(nome) LIKE LOWER('${filtro}%')` no mesmo projeto que em outros lugares usa `findOne({ where: { email } })` corretamente. O `filtro` é o parâmetro de busca digitado pelo usuário.
+
+**Regra:** Nunca interpole entrada em SQL. Use os métodos parametrizados do ORM, ou `query(sql, { replacements })` / bind `$1`. "Usar ORM no projeto" não é garantia — o furo aparece exatamente na query crua onde o ORM foi contornado.
+
+```js
+// ERRADO: query montada à mão dentro de um app que tem ORM
+`WHERE LOWER(nome) LIKE LOWER('${filtro}%')`
+// CERTO
+sequelize.query('... WHERE nome ILIKE :f', { replacements: { f: `${filtro}%` } })
+```
+
+---
+
+## `ddl-auto: update` deixa o ORM alterar seu schema sozinho no boot
+
+**Sintoma:** Colunas e tabelas aparecem/mudam de tipo "sozinhas" a cada deploy; ninguém rodou migração e mesmo assim o banco mudou.
+
+**Causa:** `spring.jpa.hibernate.ddl-auto: update` (padrão de muitos tutoriais) manda o Hibernate comparar as entidades com o banco e aplicar DDL automaticamente ao subir a aplicação. Ele **adiciona** o que falta, mas nunca remove nem corrige divergências — e você não tem controle nem histórico do que rodou.
+
+**Exemplo concreto:** `application.yml` com `jpa.hibernate.ddl-auto: update` num app que aponta para um Postgres compartilhado: renomear um campo na entidade cria uma coluna nova e deixa a antiga órfã, sem aviso.
+
+**Regra:** Em produção use `validate` (ou `none`) e versione o schema com migrações explícitas (Flyway/Liquibase). Deixe `update`/`create` só para protótipo local descartável.

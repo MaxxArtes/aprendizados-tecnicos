@@ -530,3 +530,33 @@ do job.
 -- o verde do CI tem que se refletir aqui, no destino que o painel le
 SELECT max(dt_execucao) AS ultima_carga FROM destino.tabela_do_painel;
 ```
+
+---
+
+## Orquestrador que não checa `returncode` roda a etapa seguinte sobre a falha da anterior
+
+**Sintoma:** O pipeline imprime "finalizado com sucesso" mesmo quando a primeira etapa falhou, e as camadas posteriores processam dado antigo ou vazio sem reclamar.
+
+**Causa:** O script orquestrador roda cada etapa com `subprocess.run(..., capture_output=True)`, imprime `stdout`/`stderr`, mas nunca inspeciona `resultado.returncode`. A cadeia é incondicional: a etapa 2 roda faça o que fizer a etapa 1.
+
+**Exemplo concreto:** A extração de arquivos de uma fonte externa falha (fonte fora do ar). Como ninguém checa o código de saída, os passos "salvar → normalizar → agregar" rodam mesmo assim sobre o CSV da rodada anterior, e o print final comemora com um emoji.
+
+**Regra:** Toda etapa de um orquestrador tem que checar o código de saída e abortar a cadeia (ou propagar a exceção). "Rodou sem exception no orquestrador" não é "a etapa deu certo".
+
+```python
+r = subprocess.run(["python", script], capture_output=True, text=True)
+if r.returncode != 0:
+    raise SystemExit(f"{script} falhou ({r.returncode})\n{r.stderr}")
+```
+
+---
+
+## Detectar status por substring: "unpaid" contém "paid"
+
+**Sintoma:** Um parser que classifica e-mails/documentos por palavra-chave marca itens como o oposto do que são — faturas em aberto aparecem como pagas.
+
+**Causa:** Teste de status feito com `substring in texto`. A palavra do estado negativo **contém** a do positivo, então o `in` casa nos dois casos.
+
+**Exemplo concreto:** `status = "Paid" if "paid" in body.lower() else "Pending"`. O corpo diz "Status: unpaid" → `"paid" in "...unpaid..."` é `True` → a fatura não paga vira "Paid". O mesmo vale para "not paid", "non-payment", etc.
+
+**Regra:** Nunca derive estado por `substring in`. Case por token/limite de palavra (regex com âncora de palavra) e teste o caso negativo **primeiro**. Melhor ainda: extraia o campo estruturado, não faça match no texto solto.

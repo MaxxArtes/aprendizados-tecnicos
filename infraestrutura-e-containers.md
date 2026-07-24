@@ -452,3 +452,35 @@ publicar um serviço, replique explicitamente o middleware; e valide de fora.
 
 **Como verificar:** `curl` do lado de fora da rede contra o serviço novo. **403 = protegido;
 200 = público.** Não confie em "está atrás do proxy protegido".
+
+---
+
+## `proxy_pass https://` no nginx: o header Host não é o SNI do TLS
+
+**Sintoma:** Reverse proxy do nginx para uma API externa por HTTPS retorna 502, "certificate mismatch" ou serve o certificado errado — mesmo com o header `Host` apontando para o domínio certo.
+
+**Causa:** `proxy_set_header Host dominio` só ajusta o header HTTP (camada 7). O nome enviado no handshake TLS (SNI) é controlado separadamente e, por padrão, o nginx **não** envia SNI para o upstream. Upstreams atrás de proxy compartilhado/CDN (que selecionam o certificado por SNI) devolvem o certificado padrão e o handshake quebra.
+
+**Exemplo concreto:** Bloco `location /api/ { proxy_pass https://api.terceiro.example/; proxy_set_header Host api.terceiro.example; }`. Funciona contra um IP dedicado, mas contra um upstream por SNI dá erro de TLS. Falta `proxy_ssl_server_name on;`.
+
+**Regra:** Ao fazer `proxy_pass` para um upstream HTTPS, ligue `proxy_ssl_server_name on;`. Trate SNI (TLS) e `Host` (HTTP) como dois ajustes independentes. Bônus: passar a API de terceiro pelo seu próprio `/api/` é justamente o que elimina o CORS no navegador — mas só se o TLS ao upstream fechar.
+
+```nginx
+location /api/ {
+  proxy_pass https://api.terceiro.example/;
+  proxy_ssl_server_name on;              # envia SNI
+  proxy_set_header Host api.terceiro.example;  # header HTTP, coisa diferente
+}
+```
+
+---
+
+## Caminho absoluto de disco do Windows em código que roda em container Linux vira pasta-fantasma
+
+**Sintoma:** No servidor, a memória de curto prazo nunca persiste entre execuções, ou aparece um diretório com nome estranho tipo `D:` dentro do container. Nenhum erro é lançado.
+
+**Causa:** Uma classe de contexto guarda o arquivo de estado num caminho absoluto de Windows fixado no código (`D:/projeto/utils/memory.json`). Em Linux, `os.makedirs(os.path.dirname(...))` cria alegremente uma pasta literal chamada `D:` na raiz do processo e grava lá — o path é "válido" no POSIX, só que sem sentido.
+
+**Exemplo concreto:** `ContextManager(memory_file="D:/projeto/utils/memory.json")`. Roda no notebook do dev; no container Docker de produção grava em `/app/D:/projeto/...`, some no próximo deploy e a memória volátil fica morta enquanto ninguém percebe.
+
+**Regra:** Nunca fixe caminho absoluto de uma plataforma em código que também roda noutra. Derive o path de `__file__`, de uma env var, ou de um volume declarado. Se o mesmo código roda no seu Windows e num container Linux, um caminho com letra de drive é bug garantido.

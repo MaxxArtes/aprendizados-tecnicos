@@ -237,3 +237,15 @@ flowchart TD
 
 **Regra:** em health check e automação, use o endereço literal IPv4. Vale também dentro de
 container.
+
+---
+
+## `.bat` que aponta pro `streamlit.exe` do Python da Microsoft Store não roda em outra máquina
+
+**Sintoma:** O launcher funciona só no PC de quem criou; em outro usuário dá "o sistema não pode encontrar o caminho especificado".
+
+**Causa:** Python instalado pela Microsoft Store coloca os console scripts em `%LOCALAPPDATA%\Packages\PythonSoftwareFoundation.Python.3.x_<hash>\LocalCache\local-packages\Python3xx\Scripts` — caminho **por usuário**, com sufixo pseudo-aleatório no nome do pacote, fora do PATH. Fixar esse caminho absoluto embute também o nome de usuário e quebra em qualquer outra conta.
+
+**Exemplo concreto:** `start "" "C:\Users\<user>\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_<hash>\LocalCache\local-packages\Python311\Scripts\streamlit.exe" run app.py`.
+
+**Regra:** Chame a ferramenta pelo módulo, não pelo `.exe`: `python -m streamlit run app.py` (ou `py -m ...`), que resolve pelo interpretador no PATH. Nunca hardcode o caminho de Scripts do Python da Store.

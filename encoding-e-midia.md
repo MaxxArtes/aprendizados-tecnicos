@@ -218,3 +218,27 @@ conjunto inteiro. Amostra serve para estimar **tempo**, não volume.
 
 **Como verificar:** compare a razão item a item, não só a agregada. Se ela varia bastante
 entre os itens da amostra, não é uma constante que você possa aplicar ao todo.
+
+---
+
+## `to_csv(encoding=...)` é ignorado ao escrever num buffer de texto
+
+**Sintoma:** Você passa `encoding=` no `to_csv`, mas o resultado sai noutra codificação — ou o BOM esperado do `utf-8-sig` simplesmente não aparece.
+
+**Causa:** Um `StringIO` já é texto (`str`); o pandas só aplica `encoding` quando o destino é um caminho de arquivo ou um buffer de **bytes**. Ao escrever em `StringIO`, o parâmetro `encoding` não faz nada — a codificação real só acontece no `.encode()` posterior sobre o `getvalue()`.
+
+**Exemplo concreto:** `df.to_csv(buf, encoding="utf-8-sig")` com `buf = io.StringIO()` não injeta BOM nenhum; quem injeta é `buf.getvalue().encode("utf-8-sig")` na hora de montar o `BytesIO` para download.
+
+**Regra:** Para controlar a codificação de um CSV em memória, escreva direto num `BytesIO` ou trate a codificação no `.encode()` — e não confie no argumento `encoding` do `to_csv` quando o alvo é `StringIO`.
+
+---
+
+## Fonte core do FPDF é Latin-1: acento fora da tabela ou emoji derruba a geração do PDF
+
+**Sintoma:** Gerar PDF funciona com texto simples e estoura `UnicodeEncodeError: 'latin-1' codec can't encode character` assim que o usuário digita um emoji, um traço "—", aspas curvas ou certos símbolos.
+
+**Causa:** As fontes core do FPDF (Arial/Helvetica/Times embutidas) só suportam Latin-1 (code points ≤ 255). O FPDF clássico não faz fallback: qualquer caractere fora dessa faixa levanta exceção na hora de escrever a célula.
+
+**Exemplo concreto:** Editor rich-text manda o conteúdo; o backend faz `pdf.set_font("Arial"); pdf.multi_cell(0,10, texto)`. Um título com emoji ou um "—" colado do Word quebra a rota inteira e o usuário recebe erro 500 sem pista.
+
+**Regra:** Para texto Unicode em FPDF, registre uma fonte TrueType com `add_font(..., uni=True)` (ex.: DejaVu) ou troque por uma lib que aceite UTF-8. Se mantiver a fonte core, higienize/transcodifique o texto para Latin-1 antes de escrever e decida o que fazer com o que não couber — não deixe estourar no meio da geração.

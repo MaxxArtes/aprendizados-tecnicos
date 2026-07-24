@@ -251,3 +251,15 @@ colisão **antes** de escrever.
 ```bash
 git ls-files | tr 'A-Z' 'a-z' | sort | uniq -d
 ```
+
+---
+
+## Adicionar um arquivo ao `.gitignore` não remove o que já foi commitado
+
+**Sintoma:** O `.env` está listado no `.gitignore`, mas continua aparecendo no repositório remoto e em cada `git clone`.
+
+**Causa:** `.gitignore` só impede que arquivos **ainda não rastreados** sejam adicionados. Um arquivo que já entrou num commit permanece rastreado para sempre, mesmo que depois vire regra de ignore — o Git continua versionando as mudanças dele.
+
+**Exemplo concreto:** `.env` foi commitado no primeiro push; semanas depois alguém acrescentou `.env` ao fim do `.gitignore`. O arquivo segue no repo e `git status` nem o mostra como ignorado — porque está rastreado, não ignorado.
+
+**Regra:** Depois de ignorar algo já commitado, é preciso destrackear explicitamente: `git rm --cached .env` e commitar. E lembrar que o histórico ainda contém as versões antigas — se havia segredo real, rotacione, não basta remover.

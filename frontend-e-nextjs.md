@@ -743,3 +743,73 @@ export const metadata = { title: { absolute: 'Padaria do Bairro' } };
 
 **Regra:** use template no seu próprio conteúdo e título **absoluto** nas páginas de
 inquilino. Adicione dados estruturados — é o que habilita resultado enriquecido.
+
+---
+
+## Setar `.value` de um input controlado por React não dispara o onChange
+
+**Sintoma:** Um script de autofill preenche o campo, o texto aparece na tela, mas ao enviar o formulário o valor "não existe" — o estado do React continua vazio e a validação acusa campo obrigatório em branco.
+
+**Causa:** Frameworks como React instalam o próprio setter na propriedade `value` do elemento para rastrear mudanças. Atribuir `el.value = x` diretamente escreve no DOM mas não passa pelo setter nativo que o React escuta, então o estado interno nunca é notificado.
+
+**Exemplo concreto:** Preenchimento programático de um formulário React de terceiro. `el.value = 'texto'` mostra o texto mas o `onChange` não roda. A correção é chamar o setter nativo do protótipo e depois disparar o evento:
+
+```js
+const desc = Object.getOwnPropertyDescriptor(el.__proto__, 'value');
+desc.set.call(el, value);                 // setter "nativo" que o React detecta
+el.dispatchEvent(new Event('input', { bubbles: true }));
+```
+
+**Regra:** Para preencher input/textarea de app controlado por framework, use o setter nativo do protótipo (`HTMLInputElement.prototype`) e dispare `input`+`change` com `bubbles:true`. Escrever em `.value` sozinho é invisível para o estado do componente.
+
+---
+
+## Select "custom" de UI renderiza as opções num portal fora do campo
+
+**Sintoma:** Seu script abre o dropdown, procura as opções dentro do elemento do campo e não acha nada — mas o menu está visivelmente aberto na tela.
+
+**Causa:** Bibliotecas de componentes (Material-UI e afins) não renderizam o listbox dentro do controle; renderizam num portal preso ao fim do `<body>`. Buscar `[role=option]` a partir do container do campo devolve lista vazia porque as opções não são descendentes dele no DOM.
+
+**Exemplo concreto:** Ao automatizar um `combobox` de MUI: clicar no controle, esperar o portal montar, e então buscar o listbox globalmente — pegando o último aberto, não um dentro do campo:
+
+```js
+el.click(); await sleep(100);
+const boxes = document.querySelectorAll('[role="listbox"]'); // no portal, não no campo
+const opts = boxes[boxes.length-1].querySelectorAll('[role="option"]');
+```
+
+**Regra:** Para acionar select custom, trate o menu como global: espere-o montar, consulte `[role=listbox]`/`[role=option]` a partir de `document`, clique a opção e feche com `Escape` se não achar. Só `<select>` nativo guarda as opções dentro de si.
+
+---
+
+## O formulário está num iframe — injete e mande mensagem para todos os frames
+
+**Sintoma:** A automação "não faz nada" na página, mesmo com o content script declarado e a permissão do site concedida; nenhum campo é tocado e não há erro claro.
+
+**Causa:** A página hospeda o formulário real dentro de um iframe (de outra origem ou subdomínio). Um content script/mensagem endereçado só ao frame de topo nunca alcança o documento onde os campos vivem.
+
+**Exemplo concreto:** Extensão MV3 preenchendo formulário embutido. O `manifest` declara `all_frames: true`; ainda assim o popup injeta explicitamente em todos os frames e envia o comando frame a frame, aceitando o primeiro que responder com sucesso:
+
+```js
+await chrome.scripting.executeScript({ target:{ tabId, allFrames:true }, files:['content.js'] });
+const frames = await chrome.webNavigation.getAllFrames({ tabId });
+for (const f of frames) { /* sendMessage com { frameId: f.frameId } até um dar ok */ }
+```
+
+**Regra:** Se o alvo pode estar em iframe, trate multi-frame como padrão: `all_frames:true`, injeção via `executeScript` em todos os frames, e `getAllFrames`+`sendMessage` por `frameId`. Requer a permissão `webNavigation`. Não confie que o frame de topo é onde está o DOM.
+
+---
+
+## Separador de milhar feito na mão colide com o decimal em moeda pt-BR
+
+**Sintoma:** Valores aparecem como `R$ 1.234.50` — o centavo saiu com ponto em vez de vírgula, ficando ambíguo/errado para o leitor brasileiro (esperado `R$ 1.234,56`).
+
+**Causa:** O código faz `toFixed(2)` e aplica uma regex de milhar por cima da string inteira. A regex insere pontos de milhar mas não troca o separador decimal, então o `.` dos centavos vira mais um "ponto de milhar" — o mesmo caractere passa a marcar milhar e decimal.
+
+**Exemplo concreto:** `total = 1234.5` → `toFixed(2)` = `"1234.50"` → regex de milhar → `"1.234.50"`, exibido como `R$ 1.234.50` em vez de `R$ 1.234,56`.
+
+**Regra:** Não role sua própria formatação de moeda. Use `Intl.NumberFormat`/`toLocaleString`, que cuida de milhar e decimal do locale de uma vez.
+
+```js
+valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) // "R$ 1.234,56"
+```

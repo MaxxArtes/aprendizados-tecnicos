@@ -568,3 +568,58 @@ PutBucketCors   -> gravar o conjunto COMPLETO, nunca só a nova
 
 **Regra:** sempre `Get` → acrescentar a origem → `Put` com o conjunto completo. Mesmo
 raciocínio para políticas de bucket e lifecycle.
+
+---
+
+## `email.Message.walk()` é gerador: `[0]` estoura e ainda pega a parte errada
+
+**Sintoma:** Parser de e-mail funciona em mensagens simples e quebra com `TypeError: 'generator' object is not subscriptable` justamente nos e-mails HTML/multipart — que são a maioria dos importantes.
+
+**Causa:** `msg.walk()` retorna um **gerador** de partes, não uma lista; não dá para indexar com `[0]`. E, mesmo materializando, o primeiro item de `walk()` é o **container multipart** de topo, não uma folha de texto — então `get_payload(decode=True)` não devolve o corpo esperado.
+
+**Exemplo concreto:** `body = msg.get_payload(...) if not msg.is_multipart() else msg.walk()[0].get_payload(...)`. Todo e-mail de cobrança em HTML cai no ramo multipart e explode; o ramo nunca chegou a extrair valor nenhum em produção.
+
+**Regra:** Para pegar o corpo de um e-mail multipart, itere as partes e escolha a folha pelo `content_type` (`text/plain`/`text/html`), tratando charset por parte. Reserve `walk()` para percorrer a árvore inteira, sempre iterando — nunca indexando.
+
+```python
+for part in msg.walk():
+    if part.get_content_type() == "text/plain" and not part.is_multipart():
+        body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8")
+        break
+```
+
+---
+
+## `allow_credentials=True` com origem coringa é contraditório — e o default `"*"` abre a API para qualquer site
+
+**Sintoma:** Ou as chamadas com cookie/credencial são bloqueadas pelo navegador sem erro claro, ou (pior) qualquer página da web consegue chamar sua API a partir do navegador de quem estiver logado.
+
+**Causa:** Configurar CORS com `allow_credentials=True` **e** `allow_origins=["*"]` é inconsistente: o navegador recusa `Access-Control-Allow-Origin: *` em requisição com credencial. Quando não há credencial de fato, o coringa simplesmente libera todas as origens — e um default de ambiente `ALLOWED_ORIGINS="*"` transforma "esqueci de configurar" em "API pública para o mundo".
+
+**Exemplo concreto:** `ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")` alimentando `CORSMiddleware(allow_origins=[...], allow_credentials=True, ...)`. Sem a env setada, qualquer domínio dirige as rotas pelo browser de quem estiver logado.
+
+**Regra:** Nunca combine `allow_credentials=True` com origem coringa. Liste as origens explicitamente e faça o serviço **falhar ao subir** se `ALLOWED_ORIGINS` não estiver definida, em vez de cair para `"*"`. Coringa só para API pública e sem credencial, de propósito.
+
+---
+
+## `except: return []` numa rota de leitura disfarça erro de schema como "sem dados"
+
+**Sintoma:** A tela abre vazia ("nenhum registro") e você caça o problema no cadastro/nos dados, quando na verdade a query quebrou (coluna renomeada, relação errada, tabela ausente).
+
+**Causa:** Para "não deixar a tela travar com erro 500", a rota engole toda exceção e devolve uma coleção vazia. Isso torna dois estados muito diferentes — "não há dados" e "a consulta falhou" — indistinguíveis pelo cliente, e some com o stack trace que apontaria a causa.
+
+**Exemplo concreto:** Várias rotas terminam em `except Exception as e: print(...); return []`. Quando uma coluna esperada não existia no banco, a API respondia `[]` com HTTP 200 e a equipe procurou o bug na tela por horas.
+
+**Regra:** Não use catch-all que retorna coleção vazia em caminho de leitura. Deixe o erro estourar (5xx) ou responda um envelope que separa "vazio" de "falhou" (`{ ok: false }`), e sempre logue a exceção. Estado vazio é resposta de sucesso, não fantasia sobre uma query que morreu.
+
+---
+
+## Emitir o mesmo dado sob dois nomes de chave para agradar dois fronts vira dívida permanente
+
+**Sintoma:** O payload da API carrega cada valor duplicado sob duas grafias de chave. Ninguém lembra qual o front realmente lê, e mexer numa sem a outra "quebra pela metade".
+
+**Causa:** O front foi refatorado de um esquema de nomes para outro; em vez de migrar o cliente, o servidor passou a emitir as duas grafias "por segurança". A ponte de compatibilidade nunca é removida e dobra o tamanho da resposta para sempre.
+
+**Exemplo concreto:** Para cada item a API escreve tanto `p1t1n`/`p1t1s` quanto `p1-t1-n`/`p1-t1-s` (mesmo dado, duas convenções) — porque uma versão do front usava IDs sem hífen e a nova usa com hífen.
+
+**Regra:** Ao renomear um contrato, migre o cliente e derrube a grafia antiga num prazo definido — não deixe o backend servir as duas indefinidamente. Se precisar de ponte temporária, marque-a com data de remoção. Duas grafias vivas escondem qual é a fonte de verdade e viram campo minado.

@@ -540,3 +540,48 @@ sessão, serviço rodando continuamente) em vez de trocar pelo caminho que cobra
 Antes de pedir reautenticação, simplesmente rode o comando e veja se ele se recupera:
 `expiresAt` vencido não significa sessão perdida, porque o refresh token costuma continuar
 válido.
+
+---
+
+## Texto vindo de LLM jogado em `innerHTML` é sink de XSS — trate saída de modelo como entrada não confiável
+
+**Sintoma:** Marcação inesperada aparece renderizada na tela; um título ou descrição com HTML/`<img onerror=...>` executa script no contexto da página.
+
+**Causa:** O mesmo caminho de renderização por `element.innerHTML = ...${texto}...` é alimentado tanto por texto digitado pelo usuário quanto por texto que o LLM devolve numa function-call. É fácil lembrar de desconfiar do usuário e esquecer que a saída do modelo é igualmente arbitrária — inclusive influenciável por conteúdo que o modelo leu.
+
+**Exemplo concreto:** Um assistente devolve `createTask({taskText, description})`; esses campos entram direto em `taskEntry.innerHTML = ...${taskText}...${description}...`. Se qualquer um contiver `<img src=x onerror=alert(1)>`, executa.
+
+**Regra:** Nunca interpole texto de usuário **nem de LLM** em `innerHTML`. Use `textContent`/`createTextNode` para dado, ou escape/sanitize antes de virar HTML. A fronteira de confiança é "quem controla os bytes", e a resposta do modelo está do lado de fora dela.
+
+```js
+span.textContent = taskText;        // seguro
+// em vez de: el.innerHTML = `<span>${taskText}</span>`;
+```
+
+---
+
+## Ao dirigir uma CLI de LLM por código, mande o prompt por STDIN — não como argumento de shell
+
+**Sintoma:** Chamar a CLI de IA com o prompt na linha de comando funciona com frases curtas e explode com prompts longos ou com aspas/quebras de linha: "line too long", argumento truncado, ou o shell interpretando parte do prompt.
+
+**Causa:** Prompt passado como argumento (`cli -p "<prompt gigante>"`) passa pelo parser do shell — sujeito a limite de tamanho de linha de comando (agravado no Windows), a escaping de aspas e a expansão de variáveis. O texto de um prompt de sistema tem chaves, aspas e newlines à vontade.
+
+**Exemplo concreto:** `subprocess.run('npx gemini -p "." ', input=prompt, text=True, shell=True)` — usa `"."` como placeholder no `-p` e injeta o prompt real via `input=` (STDIN). Some com todos os problemas de escape e de comprimento de uma vez.
+
+**Regra:** Payload grande ou arbitrário para um subprocesso vai por STDIN, sempre. Reserve os argumentos para flags curtas e conhecidas. E lembre: uma CLI autenticada interativamente (login de assinatura) não estará autenticada dentro de um container recém-buildado — não assuma "já está logado" como dependência de produção.
+
+```python
+subprocess.run(cmd, input=prompt, capture_output=True, text=True, encoding="utf-8")
+```
+
+---
+
+## Mandar o modelo "responder sem markdown" não dispensa remover as cercas antes de parsear
+
+**Sintoma:** `JSON.parse` da resposta do modelo estoura de vez em quando com "Unexpected token" — mesmo com o prompt pedindo JSON puro.
+
+**Causa:** Instrução no prompt ("retorne APENAS JSON, sem markdown") é probabilística, não garantida: o modelo ainda embrulha a saída em cercas de código com frequência. Confiar na instrução e parsear direto quebra de forma intermitente.
+
+**Exemplo concreto:** O servidor manda o prompt "Retorne APENAS um JSON válido, sem markdown" e ainda assim o cliente precisou tirar as cercas (```json ... ```) com `replace` antes do `JSON.parse` — a existência desse strip é a prova de que a instrução sozinha não segurou.
+
+**Regra:** Trate a resposta como texto sujo: sempre extraia o bloco JSON (strip de cercas, ou casar do primeiro `{` ao último `}`) antes de `JSON.parse`, e tenha um fallback quando o parse falhar. Peça JSON no prompt, mas não dependa disso — ou use o modo de saída estruturada/JSON do provedor quando existir.

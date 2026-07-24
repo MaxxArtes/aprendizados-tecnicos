@@ -690,3 +690,55 @@ explícita em vez de ampliar o escopo do token.
 **Como verificar:** exercite separadamente o endpoint de **listagem** e o de **leitura de item**
 com o token, antes de depender dele. Um passa e o outro falha? É escopo granular, não credencial
 inválida.
+
+---
+
+## `if not authorization` só checa se o header existe — não valida o token
+
+**Sintoma:** Endpoints "protegidos" devolvem dados para qualquer requisição que mande um header `Authorization` com qualquer string, inclusive lixo, sem sessão válida.
+
+**Causa:** A rota confunde "presença do header" com "autenticação". O guard é `if not authorization: raise 401`, mas o código nunca chama a verificação real do token antes de consultar e retornar. A validação de verdade só acontece nas rotas que por acaso derivam o contexto do usuário; as que não derivam ficam abertas.
+
+**Exemplo concreto:** Rotas como listar cargos, buscar conteúdo de aula e obter aula por ID fazem só `if not authorization: raise HTTPException(401)` e em seguida `return db.table(...).select("*").execute().data`. Um `curl -H "Authorization: x"` passa e recebe os dados; o token nunca é decodificado.
+
+**Regra:** Presença de header não é autenticação. Toda rota protegida tem que validar o token (resolver o usuário) antes de tocar em dados — de preferência num único ponto (dependency/middleware) para não existir rota que "esqueceu" de validar.
+
+```python
+# ERRADO: só checa presença
+if not authorization: raise HTTPException(401)
+return db.table("aulas").select("*").execute().data
+# CERTO: valida o token e falha se inválido
+user = get_current_user(authorization)  # decodifica/verifica; 401 se inválido
+```
+
+---
+
+## Salt de hash gerado uma vez no módulo e reusado anula o propósito do salt
+
+**Sintoma:** Dois usuários com a mesma senha acabam com o hash idêntico no banco.
+
+**Causa:** O salt foi gerado **uma vez**, no carregamento do módulo (`const salt = bcrypt.genSaltSync(10)`), e reaproveitado em todo hash. O salt existe justamente para ser único por senha; fixá-lo faz senhas iguais gerarem hashes iguais e permite pré-computação contra toda a base de uma vez.
+
+**Exemplo concreto:** `const salt = genSaltSync(10)` no topo do arquivo e depois `bcrypt.hashSync(password, salt)` em `create` e `update`. Todos os cadastros de um mesmo processo compartilham o mesmo salt.
+
+**Regra:** Deixe o bcrypt gerar um salt novo a cada senha — passe o custo, não um salt fixo: `bcrypt.hash(password, 10)`. Nunca hoiste a geração de salt para fora da chamada por-senha.
+
+```js
+// ERRADO
+const salt = bcrypt.genSaltSync(10);        // uma vez, global
+bcrypt.hashSync(password, salt);
+// CERTO
+bcrypt.hashSync(password, 10);               // salt novo por senha
+```
+
+---
+
+## Segredo no arquivo de config padrão do framework vaza também dentro do build
+
+**Sintoma:** Credencial de banco commitada no repositório público — e, mesmo depois de "limpar" o arquivo de config, ela continua no repo.
+
+**Causa:** Dois enganos que se somam: (1) a config padrão gerada pelo framework (`application.yml`/`.properties`, `appsettings.json`, etc.) é versionada por padrão, então quem escreve `username`/`password` ali commita o segredo; (2) sem `.gitignore`, o diretório de build entra no repo carregando uma **segunda cópia** compilada dessa mesma config. Apagar do fonte não basta: a cópia no build ainda vaza.
+
+**Exemplo concreto:** `src/main/resources/application.yml` com `password:` de um Postgres real, e uma cópia idêntica em `target/classes/application.yml` — ambos rastreados porque o projeto Maven não tinha `.gitignore`.
+
+**Regra:** Nunca ponha segredo na config versionada — leia de variável de ambiente/cofre e commite só um `application.example.yml`. Ignore o diretório de build (`target/`, `bin/`, `dist/`) desde o primeiro commit. Se vazou, rotacione e procure a credencial em todas as cópias, inclusive nos artefatos de build.
