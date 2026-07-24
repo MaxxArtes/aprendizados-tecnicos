@@ -1,7 +1,7 @@
 # Índice por sintoma
 
 Você não lembra o nome da lição — lembra do que está vendo na tela. Procure aqui pelo que
-está acontecendo. 213 sintomas, em ordem alfabética.
+está acontecendo. 215 sintomas, em ordem alfabética.
 
 Nem toda lição tem sintoma; algumas são decisões de arquitetura, não bugs. Essas estão só
 nos arquivos temáticos, listados no [README](README.md).
@@ -137,6 +137,7 @@ nos arquivos temáticos, listados no [README](README.md).
 | OAuth falha com `invalid_grant: Invalid code verifier` ou `redirect_uri_mismatch` só nos previews; produção funciona. | [Não fixe a URL base de autenticação quando existem deploys de preview](deploy-e-build.md#não-fixe-a-url-base-de-autenticação-quando-existem-deploys-de-preview) | Deploy |
 | ou o build direto na VPS consome toda a RAM e derruba a aplicação, ou o build no CI gera uma imagem que morre no boot com `exec format error`. | [Build pesado no runner do CI, montagem nativa no servidor de destino](deploy-e-build.md#build-pesado-no-runner-do-ci-montagem-nativa-no-servidor-de-destino) | Deploy |
 | para mudar o papel de um usuário só existia apagar e recriar — o que obriga a combinar uma senha nova com a pessoa. | [CRUD sem "update" força um fluxo destrutivo](arquitetura-e-produto.md#crud-sem-update-força-um-fluxo-destrutivo) | Arquitetura |
+| para um painel "carregar rápido", surge a proposta de trocar o banco por um colunar (OLAP) e reescrever a API — antes de medir qualquer gargalo. | [Carregamento rápido de dashboard vem de payload pequeno e cache, não de trocar o banco](arquitetura-e-produto.md#carregamento-rápido-de-dashboard-vem-de-payload-pequeno-e-cache-não-de-trocar-o-banco) | Arquitetura |
 | pedido de feature "o cliente manda o print e o sistema confirma". | [Print de comprovante não é prova de pagamento](arquitetura-e-produto.md#print-de-comprovante-não-é-prova-de-pagamento) | Arquitetura |
 | pedidos claramente de edição ("muda a cor") fazem o sistema recriar o artefato do zero. | [Quando o modelo escolhe a ferramenta errada, ponha rede de segurança no cliente](ferramentas-de-ia.md#quando-o-modelo-escolhe-a-ferramenta-errada-ponha-rede-de-segurança-no-cliente) | IA |
 | pipeline **verde**, mas o passo de espelhamento não gravou nada; o erro é um `EndpointConnectionError` perdido no meio do log. | [Variável de CI com host de rede interna não resolve em job comum](automacao-e-agendamento.md#variável-de-ci-com-host-de-rede-interna-não-resolve-em-job-comum) | Automação |
