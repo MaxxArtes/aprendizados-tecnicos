@@ -435,3 +435,46 @@ servidor OLAP dedicado.
 
 **Como verificar:** meça o tempo real de resposta do endpoint com a tabela pré-agregada e cache.
 Se está em dezenas de milissegundos, o banco não é o gargalo — e a reescrita não teria retorno.
+
+---
+
+## Fallback para dados de demonstração serve leitura, nunca escrita
+
+**Sintoma:** Usuário envia um formulário (uma informação, um comentário, um cadastro), a UI mostra "enviado com sucesso" com um ID, mas o dado nunca chega ao servidor.
+
+**Causa:** O mesmo padrão de "fallback gracioso para mock" que protege as telas de leitura quando a API cai foi aplicado ao POST. No `catch`, em vez de propagar o erro, o código liga o modo demonstração e **retorna um objeto de sucesso fabricado** (ID aleatório, anexos vazios), indistinguível de uma resposta real.
+
+**Exemplo concreto:** Um GET que cai volta a mostrar registros de exemplo — irritante, mas honesto (há um banner "modo demonstração"). O POST de "enviar informação" com o mesmo tratamento faz: `catch (err) { setMockEnabled(true); return { id: Math.random()*10000, anexos: [] } }`. A pessoa acredita que a denúncia foi registrada; ela evaporou.
+
+**Regra:** Fallback offline/mock é aceitável para GET (mostrar dado velho > tela quebrada). Para qualquer mutação, o fallback deve **falhar visível**: erro na tela, botão continua ativo, opção de reenviar. Nunca sintetize uma resposta de sucesso para uma escrita que não aconteceu.
+
+```ts
+// errado: escrita que falhou vira "sucesso"
+catch (err) { setMockEnabled(true); return fakeSuccess(); }
+// certo: leitura degrada, escrita reclama
+catch (err) { throw err; } // e a UI mantém o rascunho para reenvio
+```
+
+---
+
+## Armazenamento de arquivos por usuário exige prefixo por dono — bucket plano não isola nada
+
+**Sintoma:** Cada pessoa "tem sua conta", mas ao listar arquivos aparecem os arquivos de todos; qualquer um consegue baixar ou apagar o arquivo de qualquer outro.
+
+**Causa:** Os objetos são gravados num único bucket com chave `uuid_nomeoriginal`, sem nenhum prefixo/pasta por dono, e as rotas de listar/baixar/apagar recebem só o nome do arquivo — não existe coluna de dono nem filtro por usuário. O uuid evita colisão de nome, mas não é segredo nem autorização.
+
+**Exemplo concreto:** Um app de "drive pessoal" sobe tudo em `bucket/{uuid}_{arquivo}`. `GET /files` faz `list_objects_v2(Bucket)` e devolve o bucket inteiro; `GET /download/{key}` gera URL assinada para qualquer chave passada. Basta enumerar as chaves (a própria listagem entrega todas) para baixar arquivos alheios.
+
+**Regra:** Em storage multiusuário, o dono faz parte da chave (`{user_id}/arquivo`) e toda operação valida que o objeto pertence a quem pede. Listagem sempre com `Prefix={user_id}/`; download/delete conferem o prefixo antes de assinar/apagar. UUID na chave é anti-colisão, nunca controle de acesso.
+
+---
+
+## Nome de arquivo de saída fixo num handler web faz requisições concorrentes se atropelarem
+
+**Sintoma:** Sob dois usuários ao mesmo tempo, um baixa o documento do outro, ou recebe um arquivo pela metade / "arquivo não encontrado". Em teste solo nunca reproduz.
+
+**Causa:** O handler grava sempre no mesmo caminho fixo no diretório de trabalho e ainda apaga os antigos no início. Não há isolamento por requisição: a request B sobrescreve (ou deleta) o arquivo que a request A ainda vai enviar.
+
+**Exemplo concreto:** A rota apaga `documento_gerado.pdf` e `temp_image.png`, regrava esses mesmos nomes e responde com `FileResponse("documento_gerado.pdf")`. Dois envios simultâneos brigam pelos mesmos dois arquivos globais.
+
+**Regra:** Saída por requisição vai em caminho único (tempfile/UUID) ou, melhor, direto num buffer em memória (`BytesIO`) devolvido no response — nada de nome fixo compartilhado nem "limpar antigos" como estratégia. Estado compartilhado no filesystem é corrida garantida assim que houver dois usuários.

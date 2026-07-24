@@ -499,3 +499,51 @@ ferramenta que ajudaria a achar o problema.
 **Regra:** antes de desligar observabilidade "para economizar", verifique o modelo de
 preço. Retenção estendida de log e latência por rota costumam ser baratíssimas e são
 exatamente o que resolve incidente.
+
+---
+
+## Config de ambiente de SPA estática mora fora do bundle, num arquivo gerado no container
+
+**Sintoma:** Mudar a URL da API (dev, staging, prod) exige rebuildar o bundle e gerar uma imagem por ambiente; a mesma imagem não roda em dois lugares.
+
+**Causa:** Tudo que é importado no código-fonte é congelado no bundle em tempo de build. Se a base da API for uma constante importada, ela vira imutável no artefato.
+
+**Exemplo concreto:** O app lê `window.__API_BASE__` (com um default embutido só como fallback). Esse valor vem de um `app-config.js` **não incluído no bundle**, carregado por `<script src="./app-config.js">` **antes** do módulo principal e git-ignorado. O Dockerfile o gera na hora: `RUN printf 'window.__API_BASE__="/api";' > .../app-config.js`. A mesma imagem estática roda em qualquer ambiente trocando só esse arquivo.
+
+**Regra:** Em SPA pré-buildada e servida como estática, não asse nada específico de ambiente no bundle. Injete um `config.js` minúsculo, carregado como script clássico antes do app e gerado em tempo de container/boot. Deixe no código apenas um default inofensivo.
+
+---
+
+## Import de Python quebra conforme o processo sobe como script ou como pacote
+
+**Sintoma:** Roda no seu terminal e estoura `ImportError`/`ModuleNotFoundError` na plataforma de deploy (ou vice-versa), sempre nos imports do próprio projeto.
+
+**Causa:** `from database import X` (absoluto/top-level) só funciona quando o diretório do módulo é o cwd; `from .database import X` (relativo) só funciona quando o módulo roda como parte de um pacote. Quem decide qual dos dois vale é **como o processo é iniciado** — `uvicorn main:app` (cwd dentro da pasta) versus `uvicorn pacote.main:app` (como pacote) — e isso muda entre a máquina local e o runner da plataforma.
+
+**Exemplo concreto:** O Procfile usa `uvicorn main:app` (a plataforma entra na subpasta e roda o módulo como top-level), mas testes locais importavam como pacote. O código acabou com `try: import models except ImportError: from . import models` espalhado em vários arquivos só para sobreviver aos dois modos.
+
+**Regra:** Fixe **um** modo de execução e alinhe os imports a ele: ou sempre pacote (`python -m pacote`, imports relativos), ou sempre top-level (cwd na pasta, imports absolutos). Faça o comando de start local ser idêntico ao do Procfile/deploy. O `try/except ImportError` duplo é curativo, não cura.
+
+---
+
+## Arquivo de config com nome levemente errado é ignorado sem nenhum erro
+
+**Sintoma:** O build passa verde, o app sobe, mas o Tailwind/PostCSS simplesmente não processa nada — as classes utilitárias não têm efeito e ninguém avisa por quê.
+
+**Causa:** Ferramentas de build procuram o arquivo de config por nome exato (`postcss.config.cjs`, `tailwind.config.js`). Um nome quase certo — um ponto a mais, extensão trocada — não casa com o padrão esperado; a ferramenta não acha config, cai no default e segue como se estivesse tudo bem. Como não é erro, não aparece em log.
+
+**Exemplo concreto:** O arquivo foi salvo como `postcss.config..cjs` (dois pontos). O PostCSS nunca o carrega, as diretivas do Tailwind não são expandidas, e o resultado é "o CSS não aplica" sem uma única mensagem de falha.
+
+**Regra:** Config silenciosa que "não fez efeito" — verifique o **nome exato** do arquivo antes de mexer no conteúdo. Ferramenta que ignora config desconhecida não reclama; confirme com um teste que quebre de propósito (ex.: uma classe utilitária impossível) para provar que a pipeline realmente lê aquele arquivo.
+
+---
+
+## Dois gatilhos de auto-deploy no mesmo push disputam o mesmo diretório
+
+**Sintoma:** Um único `git push` dispara duas reconstruções simultâneas; às vezes o container reinicia duas vezes, às vezes o `docker compose up` colide com um `git pull` em andamento e o deploy fica num estado inconsistente.
+
+**Causa:** Existem dois caminhos de deploy independentes ligados ao mesmo evento: um workflow de CI que faz SSH e roda `git pull && docker compose up -d --build`, e um webhook-listener rodando no próprio servidor que faz exatamente a mesma coisa ao receber o evento de push. Ninguém desativou o primeiro ao criar o segundo.
+
+**Exemplo concreto:** `.github/workflows/deploy.yml` (ssh-action) e `webhook_listener.py` executam a mesma sequência `cd /app && git pull && docker compose up -d --build`. Pior: o webhook-listener é ele próprio um serviço do compose, então o `--build` que ele dispara recria e mata o processo que está respondendo à requisição.
+
+**Regra:** Um evento, um gatilho de deploy. Ao migrar de CI para webhook (ou vice-versa), remova o antigo no mesmo commit. E jamais faça um serviço rodar `docker compose up --build` de um compose que contém ele mesmo — ele se derruba no meio da operação.
