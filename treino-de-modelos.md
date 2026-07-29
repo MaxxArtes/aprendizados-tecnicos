@@ -188,3 +188,33 @@ de regressão (não confiar na val loss para pegar decoreba).
 
 **Como verificar:** gere 50 respostas e meça o maior n-grama compartilhado com o
 conjunto de treino; sequências longas idênticas = decorou.
+
+## Chamada de rede sem timeout no loop de treino trava o treino inteiro, não só a telemetria
+
+**Sintoma:** o painel de acompanhamento do treino para de atualizar por dezenas de
+minutos; o job continua marcado como "rodando" e a conta continua sendo cobrada, mas
+não há como saber se o modelo está progredindo ou travado.
+
+**Causa:** uma chamada de rede síncrona dentro do laço principal de treino (upload de
+telemetria, checkpoint, o que for) sem `connect_timeout`/`read_timeout` explícitos pode
+ficar pendurada indefinidamente numa rede degradada, sem lançar exceção — e como está
+na MESMA thread que faz o passo de treino, ela trava o treino junto, não só o aviso.
+Um `try/except Exception` ao redor não ajuda: a exceção nunca chega, porque a chamada
+nunca retorna.
+
+**Exemplo concreto:** a função de publicar progresso subia primeiro pro storage próprio
+(rápido, sempre funcionou) e depois, como reforço redundante, pro Drive do provedor de
+GPU — um caminho que já era conhecido como quebrado para LEITURA. A chamada de escrita
+nesse segundo caminho, sem timeout, ficou pendurada 90+ minutos numa rede instável. Só
+não passou despercebido porque o checkpoint (que sobe por outro caminho, o storage
+próprio) continuou avançando normalmente enquanto a telemetria ficava parada — a
+discrepância entre os dois é que revelou o problema.
+
+**Regra:** toda chamada de rede dentro do laço de treino tem `connect_timeout` e
+`read_timeout` explícitos, curtos o bastante pra nunca competir com o próprio passo de
+treino em duração. Caminho redundante que já é sabidamente instável não entra "só por
+garantia" — reforço que pode travar é reforço negativo.
+
+**Como verificar:** se dois caminhos de telemetria dependem de provedores diferentes,
+compare os timestamps dos dois; se um avança e o outro trava, o travado é que está
+bloqueando o laço, não um problema de rede aleatório.
