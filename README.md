@@ -75,6 +75,7 @@ pelo **sintoma** é como isto se usa às 2 da manhã.
 | Arquivo | Sobre |
 |---|---|
 | [ferramentas-de-ia.md](ferramentas-de-ia.md) | LLMs em produção, agentes de código, custo e latência |
+| [treino-de-modelos.md](treino-de-modelos.md) | Pré-treino do zero, avaliação honesta, quantização e a infra em volta |
 | [arquitetura-e-produto.md](arquitetura-e-produto.md) | Decisões com trade-off, modelagem de estado, defaults perigosos |
 
 ## Três coisas que se repetem
