@@ -1,7 +1,7 @@
 # Índice por sintoma
 
 Você não lembra o nome da lição — lembra do que está vendo na tela. Procure aqui pelo que
-está acontecendo. 250 sintomas, em ordem alfabética.
+está acontecendo. 258 sintomas, em ordem alfabética.
 
 Nem toda lição tem sintoma; algumas são decisões de arquitetura, não bugs. Essas estão só
 nos arquivos temáticos, listados no [README](README.md).
@@ -258,3 +258,11 @@ nos arquivos temáticos, listados no [README](README.md).
 | você quer uma cópia local de um armazenamento remoto e as duas cópias do "mesmo dia" nunca batem. | [Redundância de dado de fonte viva se faz espelhando o destino, não re-executando](infraestrutura-e-containers.md#redundância-de-dado-de-fonte-viva-se-faz-espelhando-o-destino-não-re-executando) | Infra |
 | você tem um valor único que vale para o período inteiro — uma taxa mensal, um custo fixo — e precisa que ele apareça numa tabela cuja granularidade é… | [Valor global do período cabe numa tabela por-item se for distribuído](banco-de-dados.md#valor-global-do-período-cabe-numa-tabela-por-item-se-for-distribuído) | Banco |
 | você troca a origem de um relatório e não tem como provar que melhorou. | [Troca de fonte de dados se valida em tabelas paralelas](automacao-e-agendamento.md#troca-de-fonte-de-dados-se-valida-em-tabelas-paralelas) | Automação |
+| o MFU calculado dá metade do esperado e nenhuma otimização move o número. | [O pico de GPU do datasheet tem um asterisco que dobra o seu denominador](treino-de-modelos.md#o-pico-de-gpu-do-datasheet-tem-um-asterisco-que-dobra-o-seu-denominador) | Treino |
+| o otimizador que a literatura elogia perde do baseline no seu treino. | [Hiperparâmetro copiado de outro projeto se converte pela escala do tensor](treino-de-modelos.md#hiperparâmetro-copiado-de-outro-projeto-se-converte-pela-escala-do-tensor) | Treino |
+| benchmark de múltipla escolha marca abaixo do acaso. | [Acurácia significativamente ABAIXO do acaso é bug do medidor, não modelo ruim](treino-de-modelos.md#acurácia-significativamente-abaixo-do-acaso-é-bug-do-medidor-não-modelo-ruim) | Treino |
+| a acurácia subiu 2 pontos e não dá para dizer se melhorou ou foi sorte. | [Comparar dois modelos por médias soltas esconde qualquer ganho pagável](treino-de-modelos.md#comparar-dois-modelos-por-médias-soltas-esconde-qualquer-ganho-pagável) | Treino |
+| o lote de experimentos "rodou" mas o log só tem os cabeçalhos. | [Filtrar log com grep no cano faz job morto parecer job sem resultado](treino-de-modelos.md#filtrar-log-com-grep-no-cano-faz-job-morto-parecer-job-sem-resultado) | Treino |
+| o checkpoint carrega sem erro e gera texto sem sentido. | [Tokenizer é parte do checkpoint — separado, o modelo vira lixo ilegível](treino-de-modelos.md#tokenizer-é-parte-do-checkpoint--separado-o-modelo-vira-lixo-ilegível) | Treino |
+| downloads "funcionam" mas os arquivos têm 22 bytes. | [Storage que devolve erro como conteúdo passa por download bem-sucedido](treino-de-modelos.md#storage-que-devolve-erro-como-conteúdo-passa-por-download-bem-sucedido) | Treino |
+| o modelo fine-tunado responde tudo com frases literais do treino. | [Dataset pequeno repetido muitas épocas vira decoreba, não estilo](treino-de-modelos.md#dataset-pequeno-repetido-muitas-épocas-vira-decoreba-não-estilo) | Treino |
