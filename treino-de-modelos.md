@@ -218,3 +218,37 @@ garantia" — reforço que pode travar é reforço negativo.
 **Como verificar:** se dois caminhos de telemetria dependem de provedores diferentes,
 compare os timestamps dos dois; se um avança e o outro trava, o travado é que está
 bloqueando o laço, não um problema de rede aleatório.
+
+## Retomar um checkpoint já decaído com LR no pico piora o modelo, não melhora
+
+**Sintoma:** um teste rápido e barato de "será que mais treino ainda ajuda" — retomar
+um checkpoint já treinado e rodar mais um pouco — devolve o modelo PIOR do que estava,
+às vezes com geração de texto degenerada.
+
+**Causa:** um cronograma WSD (warmup-stable-decay) reiniciado do zero (LR volta ao
+PICO total de propósito — é assim que o mecanismo funciona) desconverge o modelo
+esperando que a fase de decaimento reconverja pra um ponto melhor que o anterior. Se
+o novo ciclo for curto, a fase de decaimento (uma fração fixa do NOVO orçamento, não
+do original) também é curta — curta demais pra sequer voltar aonde o modelo já
+estava, quanto mais melhorar. O teste barato mede "o quanto o ciclo curto disruptiu
+e recuperou parcialmente", não "quanto o modelo ainda tem de margem".
+
+**Exemplo concreto:** um checkpoint com val loss 2,55 (decaído ao fim de um treino de
+8h) retomado com `RESET_SCHEDULE=1` e orçamento de 15 minutos: o LR voltou ao pico,
+a val loss saltou pra ~3,0-3,09 (nível de antes do decaimento original), a fase de
+decaimento desse ciclo durou só ~180s contra ~5.760s do decaimento original, e o
+treino terminou com val 2,81 — pior que o ponto de partida — e uma amostra de texto
+degenerada (sequência de sublinhados).
+
+**Regra:** um teste de extensão barato só é informativo se a fase de decaimento do
+NOVO ciclo for proporcional (em tempo absoluto, não em fração) à do ciclo original —
+ou se o LR de retomada for bem mais baixo que o pico original, evitando o
+re-aquecimento disruptivo. Testar a hipótese "ainda tem margem" com um orçamento
+pequeno demais não economiza dinheiro — devolve um resultado sem informação (nem
+confirma nem refuta) e ainda soa como confirmação de que "não tem mais margem" pra
+quem não souber a causa.
+
+**Como verificar:** compare a duração da fase de decaimento do teste (fração do
+orçamento × orçamento) contra a duração da fase de decaimento do treino original em
+segundos absolutos — se for uma fração pequena dela, o teste não vai reconvergir a
+tempo, e o resultado não deve ser usado pra decidir nada.
