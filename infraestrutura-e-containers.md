@@ -484,3 +484,49 @@ location /api/ {
 **Exemplo concreto:** `ContextManager(memory_file="D:/projeto/utils/memory.json")`. Roda no notebook do dev; no container Docker de produção grava em `/app/D:/projeto/...`, some no próximo deploy e a memória volátil fica morta enquanto ninguém percebe.
 
 **Regra:** Nunca fixe caminho absoluto de uma plataforma em código que também roda noutra. Derive o path de `__file__`, de uma env var, ou de um volume declarado. Se o mesmo código roda no seu Windows e num container Linux, um caminho com letra de drive é bug garantido.
+
+## Olhe a carga antes de paralelizar — o gargalo pode não ser CPU
+
+**Sintoma:** você paraleliza um processamento (mais workers, mais threads) e o tempo
+quase não muda; ou aluga uma máquina maior e ela fica ociosa.
+
+**Causa:** paralelismo de CPU só acelera trabalho limitado por CPU. Se o gargalo é rede
+ou disco, mais núcleos disputam a mesma banda — e a carga do sistema, que denunciaria
+isso de graça, não foi olhada antes da decisão.
+
+**Exemplo concreto:** deduplicação de corpus numa máquina de 16 núcleos: carga 0,27 —
+94% ociosa, gargalo era o download sequencial de um objeto por vez do bucket. Prefetch
+de 10 downloads em paralelo (threads de I/O, não de CPU): 7× mais rápido. No mesmo dia,
+o caso oposto: tokenização com carga 1,0 em 16 núcleos era gargalo de CPU serial
+(`encode` monothread) — a correção foi outra (`encode_batch`). A mesma leitura de carga
+diagnosticou os dois em segundos.
+
+**Regra:** antes de paralelizar, `uptime` + `top` por 30 segundos. Carga ≪ núcleos =
+gargalo de I/O (paralelize downloads/leituras); carga ≈ 1 com um processo = serialização
+de CPU (paralelize o cálculo); carga ≈ núcleos = já saturado (paralelizar piora).
+
+**Como verificar:** a razão carga/núcleos durante o processamento. Se você nunca a
+mediu, a sua intuição sobre o gargalo está desinformada — nos dois casos acima ela
+estava errada.
+
+## APIs em transição de versão: cada operação pode morar numa versão diferente
+
+**Sintoma:** o DELETE de um recurso devolve 404 numa versão da API e funciona na outra —
+enquanto a LISTAGEM faz o oposto. O código "corrigido para a versão nova" deixa de
+conseguir destruir recursos que continuam cobrando.
+
+**Causa:** provedores migram endpoints um a um. Durante a transição, a versão antiga
+responde erro explícito para uns caminhos e a nova ainda não implementa outros. Corrigir
+o cliente inteiro para uma única versão troca um conjunto de falhas por outro.
+
+**Exemplo concreto:** na API do Vast.ai, `/api/v0/instances/` (listagem) foi aposentado
+com erro 410 e lista vazia — fazendo a checagem "sobrou instância?" dar falso negativo —
+enquanto o DELETE só funciona na v0 e devolve 404 na v1. Um desligamento automático que
+confiou na v1 deixou uma instância de GPU cobrando por 2 horas com "sucesso" no log.
+
+**Regra:** trate a versão POR OPERAÇÃO, não por cliente; após qualquer DELETE, confirme
+pela LISTAGEM que o recurso sumiu — nunca pelo código de retorno; e teste o caminho de
+destruição com a mesma seriedade do de criação, porque é ele que para a cobrança.
+
+**Como verificar:** para cada operação do seu cliente, chame as duas versões e anote a
+matriz do que funciona onde — ela raramente é uniforme.

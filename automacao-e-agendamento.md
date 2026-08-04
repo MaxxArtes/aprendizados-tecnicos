@@ -560,3 +560,32 @@ if r.returncode != 0:
 **Exemplo concreto:** `status = "Paid" if "paid" in body.lower() else "Pending"`. O corpo diz "Status: unpaid" → `"paid" in "...unpaid..."` é `True` → a fatura não paga vira "Paid". O mesmo vale para "not paid", "non-payment", etc.
 
 **Regra:** Nunca derive estado por `substring in`. Case por token/limite de palavra (regex com âncora de palavra) e teste o caso negativo **primeiro**. Melhor ainda: extraia o campo estruturado, não faça match no texto solto.
+
+## Estado persistido sem prova de frescor age sobre o passado
+
+**Sintoma:** um vigia automático destrói uma instância recém-criada "porque o trabalho
+terminou"; ou ignora uma instância cara rodando "porque já encerrou"; ou um relatório
+de sucesso esconde uma falha. Cada caso parece um bug diferente — a causa é uma só.
+
+**Causa:** estado persistido (arquivo de resultado num bucket, arquivo de estado do
+vigia, código de saída numa variável) sobrevive ao contexto que o criou. Código que lê
+esse estado sem perguntar "isto é da rodada ATUAL?" funciona nos testes — onde só existe
+uma rodada — e falha em produção, silenciosamente.
+
+**Exemplo concreto:** quatro incidentes no mesmo dia. (1) Um resultado antigo no bucket
+fez o vigia concluir que o teste tinha acabado e destruir a instância nova 1 minuto após
+criá-la. (2) O uploader da instância destruída sobreviveu alguns segundos e re-subiu o
+log antigo DEPOIS da limpeza — o log velho foi lido como se fosse da instância nova.
+(3) `echo "codigo $?"` com `$(date)` na mesma linha: o subshell zera o `$?` e toda falha
+vira "código 0". (4) O arquivo de estado do vigia dizia `encerrado` da rodada anterior;
+ele logava "nada a fazer" enquanto uma instância de US$ 7/h rodava sem vigilância.
+
+**Regra:** toda espera por resultado em armazenamento compartilhado compara
+`LastModified` com o momento do lançamento — existência e conteúdo não bastam. Estado de
+vigia é chaveado por NOME DA RODADA, nunca um booleano global. `$?` se captura na linha
+seguinte, sozinho. E ao relançar, limpar o estado anterior sabendo que processos
+moribundos podem reescrevê-lo depois da limpeza — só a checagem de frescor cobre isso.
+
+**Como verificar:** para cada leitura de estado no seu automatismo, pergunte: "se este
+valor for da rodada passada, o que acontece?" Se a resposta é uma ação destrutiva ou um
+falso sucesso, falta a prova de frescor.
