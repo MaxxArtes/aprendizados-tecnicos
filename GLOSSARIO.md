@@ -16,14 +16,34 @@ mundo usa como se você já soubesse — e para você reconhecê-la da próxima 
 
 ## Fundamentos que aparecem em todo lugar
 
+**All-reduce** — operação que soma (ou tira a média de) um valor entre todos os
+processos de um treino distribuído e devolve o resultado a todos. É como os gradientes
+de várias GPUs viram um só.
+
+**DDP** (DistributedDataParallel) — jeito padrão do PyTorch de treinar em várias GPUs:
+cada uma processa uma fatia do lote e os gradientes são somados entre elas a cada passo.
+
 **Endpoint** — um endereço específico da sua API que faz uma coisa (`POST /pedidos`,
 `GET /usuarios/42`). "Expor um endpoint" é disponibilizar essa URL.
 
 **Handler** — a função que efetivamente responde a uma requisição num endpoint. Quando se diz
 "o handler engoliu o erro", é essa função.
 
+**MFU** (Model FLOPs Utilization) — fração do poder de cálculo da GPU que o treino
+realmente usa. 20% é comum em modelo pequeno; o resto se perde em espera de memória e
+custo fixo de lançar operações.
+
 **Payload** — o conteúdo que vai no corpo de uma requisição ou de um evento, normalmente JSON.
 "Não confie no payload" significa: quem manda pode mandar qualquer coisa.
+
+**Prefetch** — baixar ou carregar o próximo dado ENQUANTO o atual é processado, em vez
+de esperar. Transforma tempo de espera de rede/disco em tempo útil.
+
+**Rank** — o número de cada processo num treino distribuído (0, 1, 2...). O rank 0 é o
+"líder" por convenção: grava checkpoint, escreve log, prepara arquivo compartilhado.
+
+**Shard** — um pedaço de um conjunto grande (corpus, tabela, índice) dividido para caber
+em disco/memória ou para processar em paralelo. O conjunto inteiro é a soma dos shards.
 
 **Token** — string que prova quem você é ou o que você pode fazer. Funciona como uma chave
 física: quem tiver, usa. Por isso não se coloca token em log, URL ou repositório.
@@ -108,6 +128,9 @@ tempo de sessão e detectar quem sumiu.
 ---
 
 ## APIs e integrações
+
+**Warmup** — começo do treino com taxa de aprendizado subindo gradualmente do zero até o
+valor cheio. Evita que os primeiros passos, ainda caóticos, desorganizem os pesos.
 
 **Webhook** — o serviço de terceiro chama **você** quando algo acontece, em vez de você ficar
 perguntando. Como qualquer um pode chamar essa URL, ela precisa validar quem chamou.
