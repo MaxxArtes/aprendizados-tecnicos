@@ -252,3 +252,111 @@ quem não souber a causa.
 orçamento × orçamento) contra a duração da fase de decaimento do treino original em
 segundos absolutos — se for uma fração pequena dela, o teste não vai reconvergir a
 tempo, e o resultado não deve ser usado pra decidir nada.
+
+## Medir duplicata por amostragem é estatisticamente cego
+
+**Sintoma:** a taxa de duplicatas entre duas fontes de corpus, medida por amostra, dá
+~0% — e uma passagem completa depois encontra dezenas de milhares de documentos
+repetidos.
+
+**Causa:** a interseção de duas amostras é um estimador viciado para baixo: um documento
+presente nas duas fontes só é detectado se cair nas **duas** amostras ao mesmo tempo.
+Amostrando 3% de cada lado, a chance de detectar cada duplicata é ~0,1% — a medição
+inteira é ruído.
+
+**Exemplo concreto:** duas fontes derivadas de Common Crawl, amostra de 160 mil
+documentos por fonte: 0,062% de sobreposição medida. Passagem completa com tabela única
+de hashes: **1,49%** — 24× mais, 72 mil documentos. A mesma amostragem também subestimou
+a duplicata interna de uma fonte de PDFs: 16,6% medido contra 23,9% real.
+
+**Regra:** taxa de duplicata se mede com passagem completa e tabela única. Amostra serve
+para estimar propriedades de documentos individuais, nunca de PARES de documentos.
+
+**Como verificar:** se a medição por amostra deu quase zero, rode a passagem completa em
+um subconjunto pequeno mas INTEIRO (uma fonte contra outra) e compare as ordens de
+grandeza.
+
+## Lista Python para acumular tokens custa 20× a RAM do dado
+
+**Sintoma:** um processamento de corpus morre por falta de memória acumulando um buffer
+que "deveria" ter algumas centenas de MB.
+
+**Causa:** cada `int` de token numa lista Python é um objeto de 28 bytes mais 8 de
+ponteiro (IDs acima de 256 não são cacheados) — 36-40 bytes por token que no arquivo
+final ocupa 2 (`uint16`). O buffer de 80 MB no disco são ~1,5 GB na lista.
+
+**Exemplo concreto:** buffer de 40 milhões de tokens antes de gravar: ~1,4 GB em lista,
+estourou o teto de memória do processo e matou a montagem do corpus — silenciosamente,
+porque o código de saída foi mascarado por outro defeito. Trocado por `array("H")`: os
+mesmos 40 milhões em 80 MB.
+
+**Regra:** buffer de tokens é `array` do módulo `array` (ou `np.ndarray`), nunca lista.
+`array("H")` para vocabulário até 65k; a gravação vira `np.frombuffer(...).tofile()`.
+
+**Como verificar:** `sys.getsizeof` de uma lista de 1 milhão de tokens contra
+`array("H")` com o mesmo conteúdo — a razão é ~20×.
+
+## Tokenizar documento a documento usa um núcleo; o lote usa todos
+
+**Sintoma:** máquina de 16 núcleos tokenizando corpus com carga ~1,0; pagou-se por
+paralelismo que não acontece.
+
+**Causa:** `tokenizer.encode(texto)` da biblioteca `tokenizers` é monothread. O
+paralelismo da biblioteca (Rust + rayon) só é acionado por `encode_batch(lista)`.
+
+**Exemplo concreto:** montagem de corpus em máquina de 16 vCPU: carga 0,95, 200 milhões
+de tokens em 5 minutos. Trocando o laço documento-a-documento por `encode_batch` sobre o
+lote já filtrado: 3,5× mais rápido, sem mudar mais nada.
+
+**Regra:** filtre e acumule documentos primeiro, tokenize em lote depois. `encode` um a
+um só para depuração.
+
+**Como verificar:** `uptime` durante a tokenização — carga próxima de 1 numa máquina
+multi-núcleo denuncia o laço serial.
+
+## Sob DDP, preparar arquivo compartilhado sem eleger um rank é corrida armada
+
+**Sintoma:** treino multi-GPU morre no arranque com `FileNotFoundError` num arquivo
+`.tmp` que o próprio código acabou de criar; em uma GPU funciona sempre.
+
+**Causa:** os N processos do DDP executam o MESMO código de preparação (concatenar
+shards, gerar cache, converter dado). Todos escrevem o mesmo arquivo temporário; o
+primeiro `os.replace` leva o arquivo, os demais falham — ou pior, sobrescrevem-se em
+silêncio.
+
+**Exemplo concreto:** concatenação de 123 shards de corpus num `.cat` único: 4 ranks
+construíram o mesmo `.tmp` ao mesmo tempo e o lançamento inteiro caiu. O teste de
+bancada não pegou porque rodou em processo único — teste que não cobre a concorrência
+real aprova código quebrado.
+
+**Regra:** preparação de arquivo compartilhado é trabalho do rank 0; os demais esperam o
+arquivo COMPLETO aparecer (existência + tamanho esperado), com timeout. Nome temporário
+leva o PID por segurança.
+
+**Como verificar:** rode a preparação com 2 processos locais (`torchrun
+--nproc_per_node 2`, backend gloo, em CPU) antes de pagar GPU — a corrida aparece de
+graça.
+
+## Ganho de recusa medido só do lado negativo pode ser limiar, não aprendizado
+
+**Sintoma:** depois de um fine-tuning, a taxa de recusa em perguntas SEM resposta sobe
+(ex.: 34% → 48%) e parece aprendizado — mas o modelo continua inútil na prática.
+
+**Causa:** medir só os negativos não distingue "aprendeu a julgar respondibilidade" de
+"ficou mais conservador em tudo". Um deslocamento global do limiar sobe a recusa nos
+negativos E nos positivos ao mesmo tempo — e a segunda metade fica invisível se o
+conjunto de avaliação não tem positivos do MESMO domínio dos negativos.
+
+**Exemplo concreto:** recusa em negativos humanos subiu de 34,00% para 47,75% e foi
+celebrada. O controle com respondíveis do mesmo corpus mostrou 42,0% de recusa indevida
+contra 46,7% de correta — discriminação de 4,7 pontos, p=0,41. O modelo recusava ~44% de
+TUDO. Duas hipóteses mecanicistas (familiaridade de domínio; confiança sensível a
+domínio) foram refutadas pela mesma tabela.
+
+**Regra:** avaliação de recusa/abstenção exige os quatro quadrantes: negativos e
+positivos do MESMO domínio. O número que importa é a DIFERENÇA entre recusa nos
+negativos e recusa nos positivos, com teste de significância — não a taxa isolada.
+
+**Como verificar:** se o seu conjunto de avaliação de recusa não tem positivos da mesma
+fonte dos negativos, o resultado é inconclusivo por construção — monte o controle antes
+de celebrar.
