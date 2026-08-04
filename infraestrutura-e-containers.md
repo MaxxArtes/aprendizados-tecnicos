@@ -519,9 +519,9 @@ conseguir destruir recursos que continuam cobrando.
 responde erro explícito para uns caminhos e a nova ainda não implementa outros. Corrigir
 o cliente inteiro para uma única versão troca um conjunto de falhas por outro.
 
-**Exemplo concreto:** na API do Vast.ai, `/api/v0/instances/` (listagem) foi aposentado
+**Exemplo concreto:** na API de um provedor de GPU sob demanda, o caminho de listagem da versão antiga foi aposentado
 com erro 410 e lista vazia — fazendo a checagem "sobrou instância?" dar falso negativo —
-enquanto o DELETE só funciona na v0 e devolve 404 na v1. Um desligamento automático que
+enquanto o DELETE só funciona na versão antiga e devolve 404 na nova. Um desligamento automático que
 confiou na v1 deixou uma instância de GPU cobrando por 2 horas com "sucesso" no log.
 
 **Regra:** trate a versão POR OPERAÇÃO, não por cliente; após qualquer DELETE, confirme
