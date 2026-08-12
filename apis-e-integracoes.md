@@ -623,3 +623,15 @@ for part in msg.walk():
 **Exemplo concreto:** Para cada item a API escreve tanto `p1t1n`/`p1t1s` quanto `p1-t1-n`/`p1-t1-s` (mesmo dado, duas convenções) — porque uma versão do front usava IDs sem hífen e a nova usa com hífen.
 
 **Regra:** Ao renomear um contrato, migre o cliente e derrube a grafia antiga num prazo definido — não deixe o backend servir as duas indefinidamente. Se precisar de ponte temporária, marque-a com data de remoção. Duas grafias vivas escondem qual é a fonte de verdade e viram campo minado.
+
+---
+
+## Pairing code do Baileys é rejeitado pelo WhatsApp mesmo com tudo certo — só o QR conecta
+
+**Sintoma:** Na integração não-oficial de WhatsApp (Baileys direto ou via Evolution API), o código de pareamento de 8 caracteres ("Conectar com número de telefone") é gerado normalmente, mas o aparelho responde "Código incorreto" ou "Não foi possível conectar o dispositivo". O QR code conecta na mesma conta, no mesmo servidor e IP.
+
+**Causa:** Bug aberto na implementação do pairing code do Baileys (issues 2033, 1573 e 2437 do Evolution API). Não é ambiente: falha igual com número no formato exato do JID, código fresco (exibido ao vivo, digitado em <15 s), instância recém-criada (pre-keys zeradas), fingerprint de navegador padrão e até com a última release da lib injetada no container. Três armadilhas escondem o diagnóstico e fazem parecer erro de uso: (1) o código **rotaciona ~50 s** como o QR — código enviado por chat chega velho e dá "incorreto"; (2) conta brasileira antiga tem JID **sem o nono dígito** — pedir código com o 9 gera "confira o número"; (3) o Evolution fixa o número no **início do ciclo** da instância — trocar o número na chamada seguinte é ignorado até reiniciar a instância.
+
+**Exemplo concreto:** Página web mostrando o código vigente com idade em segundos; usuário digitou códigos com 4–9 s de vida, nas duas variantes do número, em instância limpa com Baileys 7.0.0-rc14 — todas as tentativas falharam; o QR da mesma instância conectou de primeira.
+
+**Regra:** Para vínculo não-oficial, ofereça só QR (que exige uma segunda tela para escanear) e trate "aparelho único sem câmera" como caso da API oficial da Meta. Antes de culpar o próprio código: verifique se o código digitado ainda era o vigente, se o número casa com o JID (Brasil: sem o nono dígito em conta antiga) e se a instância foi recriada após falhas — se ainda assim falhar com QR funcionando, é o bug upstream, não vale mais horas.
