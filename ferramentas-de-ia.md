@@ -585,3 +585,33 @@ subprocess.run(cmd, input=prompt, capture_output=True, text=True, encoding="utf-
 **Exemplo concreto:** O servidor manda o prompt "Retorne APENAS um JSON válido, sem markdown" e ainda assim o cliente precisou tirar as cercas (```json ... ```) com `replace` antes do `JSON.parse` — a existência desse strip é a prova de que a instrução sozinha não segurou.
 
 **Regra:** Trate a resposta como texto sujo: sempre extraia o bloco JSON (strip de cercas, ou casar do primeiro `{` ao último `}`) antes de `JSON.parse`, e tenha um fallback quando o parse falhar. Peça JSON no prompt, mas não dependa disso — ou use o modo de saída estruturada/JSON do provedor quando existir.
+
+---
+
+## Servir modelo pequeno em CPU: gguf compilado nativo, nunca PyTorch
+
+**Sintoma:** o servidor de inferência em CPU demora vários segundos por resposta e não
+melhora quando você adiciona mais núcleos.
+
+**Causa:** PyTorch em CPU é ineficiente para geração autoregressiva de modelo pequeno e quase
+não escala com threads (o overhead de sincronização domina). E o binário **prebuilt** do
+llama.cpp (release genérico) roda **sem as instruções vetoriais (AVX)** da máquina — cai para
+código escalar, dezenas de vezes mais lento.
+
+**Exemplo concreto:** modelo de 269M gerando ~44 tokens. PyTorch: 8,1s em 2 núcleos e 7,8s em
+4 (os núcleos extras não ajudaram). O mesmo modelo em gguf com llama.cpp **compilado nativo no
+próprio servidor**: 82 tokens/s — ~0,5s pela mesma geração, ~15x mais rápido. O binário
+prebuilt do llama.cpp fez 8 tokens em mais de 45s (sem AVX). Consequência de negócio: um
+servidor Intel barato (4 núcleos, ~US$10/mês) com gguf ficou 7x mais rápido que um AMD que
+custava mais que o dobro rodando PyTorch. A troca de runtime deu mais ganho que a troca de
+hardware.
+
+**Regra:** para servir modelo pequeno em produção sobre CPU, use **gguf via llama.cpp /
+llama-server**, não PyTorch. Compile o llama.cpp **nativo na própria máquina que vai rodar**
+(`cmake -B build -DGGML_NATIVE=ON`), nunca o binário prebuilt genérico. Antes de pagar por
+CPU dedicada ou AMD achando que precisa de velocidade, troque o runtime primeiro.
+
+**Verificação:** meça com `llama-bench -m modelo.gguf -n 44 -t <núcleos>` (o `llama-cli` entra
+em modo interativo e trava a medição). Se o gguf nativo não estiver ~10x mais rápido que o
+PyTorch, o build provavelmente não pegou AVX — confirme que compilou com `-DGGML_NATIVE=ON`
+na máquina de destino.
