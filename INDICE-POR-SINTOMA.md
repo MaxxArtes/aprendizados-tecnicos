@@ -1,13 +1,14 @@
 # Índice por sintoma
 
 Você não lembra o nome da lição — lembra do que está vendo na tela. Procure aqui pelo que
-está acontecendo. 266 sintomas, em ordem alfabética.
+está acontecendo. 270 sintomas, em ordem alfabética.
 
 Nem toda lição tem sintoma; algumas são decisões de arquitetura, não bugs. Essas estão só
 nos arquivos temáticos, listados no [README](README.md).
 
 | Sintoma | Lição | Onde |
 |---|---|---|
+| modelo base parece incapaz numa tarefa que domina; as gerações terminam num segundo turno inventado. | [Modelo base avaliado em tarefa de turno responde e depois "vira o usuário"](treino-de-modelos.md#modelo-base-avaliado-em-tarefa-de-turno-responde-e-depois-vira-o-usuário) | Treino |
 | "não conecta" — e não se sabe se o bloqueio é da porta, do destino, do host de origem ou do container. | [Diagnóstico de egresso: teste destinos e portas cruzados](apis-e-integracoes.md#diagnóstico-de-egresso-teste-destinos-e-portas-cruzados) | APIs |
 | "navegação lenta" numa galeria. | [Meça antes de otimizar: o gargalo costuma ser payload, não roteamento](deploy-e-build.md#meça-antes-de-otimizar-o-gargalo-costuma-ser-payload-não-roteamento) | Deploy |
 | `curl -s URL` retorna um objeto de resposta em vez do corpo, ou erra em flags válidas; `dir /s /b` devolve erro de parâmetro. | [`curl` e `dir /s /b` não são o que você pensa](windows-e-powershell.md#curl-e-dir-s-b-não-são-o-que-você-pensa) | Windows |
@@ -15,6 +16,9 @@ nos arquivos temáticos, listados no [README](README.md).
 | `ERR_TOO_MANY_REDIRECTS` ao acessar a área administrativa. | [`middleware` com matcher amplo cria loop de redirect na própria página de login](frontend-e-nextjs.md#middleware-com-matcher-amplo-cria-loop-de-redirect-na-própria-página-de-login) | Frontend |
 | `git status` acusa dezenas de "commits ahead" num repositório que você sabe estar sincronizado — e você quase reescreve o remoto por causa disso. | [Branch local rastreando upstream antigo inventa commits "não enviados"](git.md#branch-local-rastreando-upstream-antigo-inventa-commits-não-enviados) | Git |
 | `npm run dev` roda liso, mas o build na plataforma falha com `'x' is defined but never used` ou `prefer-const`. | [O lint do CI é mais rigoroso que o dev local](deploy-e-build.md#o-lint-do-ci-é-mais-rigoroso-que-o-dev-local) | Deploy |
+| o benchmark de língua desaba depois de um SFT de tarefa que ficou "ótimo". | [SFT de tarefa sem replay do pré-treino apaga a língua que pagou caro](treino-de-modelos.md#sft-de-tarefa-sem-replay-do-pré-treino-apaga-a-língua-que-pagou-caro) | Treino |
+| o loss melhora repetindo o "dado bom" e o modelo piora onde importa. | [Dado raro repetido: aprende até ~3 épocas, memoriza aos ~5, deixa de valer aos ~40](treino-de-modelos.md#dado-raro-repetido-aprende-até-3-épocas-memoriza-aos-5-deixa-de-valer-aos-40) | Treino |
+| o score do juiz automático muda entre rodadas com a mesma entrada e temperatura 0. | [Juiz-LLM é instrumento com ruído próprio — meça o ruído antes de ler o ponteiro](treino-de-modelos.md#juiz-llm-é-instrumento-com-ruído-próprio--meça-o-ruído-antes-de-ler-o-ponteiro) | Treino |
 | `PUT` no recurso do registro devolve 422 sem explicação útil. | [Update de conjunto de registros DNS pode não ser `PUT`](infraestrutura-e-containers.md#update-de-conjunto-de-registros-dns-pode-não-ser-put) | Infra |
 | a aplicação conecta com uma credencial antiga depois de uma rotação "concluída". | [Duas fontes de verdade para o mesmo segredo divergem em silêncio](seguranca-e-segredos.md#duas-fontes-de-verdade-para-o-mesmo-segredo-divergem-em-silêncio) | Segurança |
 | a aplicação funciona, mas a migration falha com erro de conexão ou timeout de transação. Ou o inverso. | [Integrações gerenciadas criam seis connection strings quase iguais](banco-de-dados.md#integrações-gerenciadas-criam-seis-connection-strings-quase-iguais) | Banco |

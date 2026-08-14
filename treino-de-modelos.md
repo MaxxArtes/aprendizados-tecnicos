@@ -360,3 +360,91 @@ negativos e recusa nos positivos, com teste de significância — não a taxa is
 **Como verificar:** se o seu conjunto de avaliação de recusa não tem positivos da mesma
 fonte dos negativos, o resultado é inconclusivo por construção — monte o controle antes
 de celebrar.
+
+## SFT de tarefa sem replay do pré-treino apaga a língua que pagou caro
+
+**Sintoma:** depois de um fine-tuning de tarefa (SFT), a métrica-alvo fica ótima — e o
+benchmark de língua desaba (no nosso caso, CALAME de ~50 para ~17; noutra base, 53 para
+12). Ninguém nota, porque só a métrica da tarefa foi medida.
+
+**Causa:** esquecimento catastrófico. O SFT só apresenta a distribuição estreita da
+tarefa; os pesos que sustentavam a competência geral são sobrescritos sem nada que os
+defenda. O mesmo mecanismo destrói a tarefa ANTERIOR num segundo SFT sequencial
+(intenção 86 → 44).
+
+**Exemplo concreto:** mesmo SFT, mesma dose de dado, num modelo de 269M: sem replay,
+CALAME 18,11 e 5-shot 19,33; misturando 25% de dado do pré-treino ao lote do SFT,
+CALAME 42,97 e 5-shot 41,33 — com a execução da tarefa intacta (intenção 87,2 → 87,4,
+F1 74,9 → 75,5). O replay não custou nada mensurável na tarefa.
+
+**Regra:** todo SFT leva replay do dado de pré-treino (25% funcionou; trate como piso a
+ajustar), e a bateria de avaliação do SFT inclui SEMPRE um benchmark de competência
+geral, não só a métrica da tarefa.
+
+**Como verificar:** rode o benchmark de língua no modelo antes e depois do SFT. Queda
+de dezenas de pontos com a tarefa "ótima" é o sintoma exato.
+
+## Modelo base avaliado em tarefa de turno responde e depois "vira o usuário"
+
+**Sintoma:** um modelo base (sem SFT) parece incapaz numa tarefa que ele domina: F1
+na metade do esperado, respostas que começam certas e terminam em lixo.
+
+**Causa:** base é completador de texto: ela responde e SEGUE completando — inventa o
+próximo turno do usuário, outra pergunta, outra resposta. Se o medidor pontua a geração
+inteira, o apêndice inventado dilui a resposta certa. Não é limitação do modelo; é o
+medidor sem critério de parada.
+
+**Exemplo concreto:** F1 de extração de campos de um 269M sem SFT: 37,96 medido cru.
+Cortando a geração no marcador do próximo turno: 73,65. O número dobrou sem tocar no
+modelo — e três conclusões de projeto tiradas do número cru estavam erradas.
+
+**Regra:** avaliação de modelo base em tarefa de turno exige corte explícito no
+marcador de próximo turno (ou terminador equivalente) antes de pontuar. Registrar na
+régua COMO a parada foi feita; números com e sem corte são incomparáveis.
+
+**Como verificar:** leia 10 gerações cruas antes de aceitar qualquer métrica de base.
+Se aparecer um segundo turno inventado, o medidor está pontuando lixo.
+
+## Juiz-LLM é instrumento com ruído próprio — meça o ruído antes de ler o ponteiro
+
+**Sintoma:** o score do juiz automático muda de uma rodada para outra com a MESMA
+entrada e temperatura 0; diferenças de poucos pontos entre modelos são celebradas ou
+lamentadas conforme a rodada.
+
+**Causa:** julgamento por LLM tem variância própria (infra, desempate de tokens,
+sensibilidade a formatação) mesmo "determinístico". Com n pequeno, a granularidade por
+item soma-se ao ruído: com n=15, cada item vale 6,7 pontos.
+
+**Exemplo concreto:** 5 rodadas do mesmo juiz binário sobre as mesmas saídas: ±9 pontos
+percentuais de ruído típico, com excursão até 25. Uma diferença de 26 pp em
+"honestidade" entre dois candidatos era só 3 aceites de distância (10 vs 13 em n=15) —
+sinal fraco, não veredito.
+
+**Regra:** antes de usar um juiz-LLM para decidir, rode-o 3–5 vezes sobre as mesmas
+saídas e registre a excursão. Diferença menor que o ruído medido não é sinal; decisão
+de treino não se toma por ela. Aumente o n antes de aumentar a convicção.
+
+**Como verificar:** repita o juiz sobre um conjunto fixo. Se você não sabe o ruído do
+seu juiz, você não sabe ler o placar dele.
+
+## Dado raro repetido: aprende até ~3 épocas, memoriza aos ~5, deixa de valer aos ~40
+
+**Sintoma:** repetir o dado mais valioso do corpus por muitas épocas parece de graça
+("é o dado bom!") — o loss agradece, e o modelo piora onde importa.
+
+**Causa:** o valor de um conjunto pequeno e raro se esgota rápido: depois de poucas
+épocas o modelo decora superfícies em vez de aprender o padrão, e o excesso ainda
+desloca o que o resto do treino tinha construído.
+
+**Exemplo concreto:** curva de dose medida num 269M: aprendizado puro até ~2,7 épocas;
+primeiros sinais de memorização em ~5 (o 5-shot cai primeiro); valor zera por volta de
+~40. Dois runs que passaram disso (81 e 148 épocas do mesmo dado na fase de decay)
+saíram piores em língua — desastre previsto pela curva e confirmado.
+
+**Regra:** orce as ÉPOCAS do dado raro, não a fração da mistura: fração fixa com budget
+de tempo diferente muda as épocas silenciosamente. Fique ≤ 3 épocas para aprender;
+trate 5+ como zona de memorização; 40+ é desperdício com dano.
+
+**Como verificar:** acompanhe uma métrica de generalização (few-shot, benchmark de
+língua) junto com o loss durante a fase repetida — a queda do few-shot denuncia a
+memorização antes do loss contar qualquer coisa.

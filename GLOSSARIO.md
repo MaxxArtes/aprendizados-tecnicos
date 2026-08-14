@@ -504,6 +504,29 @@ de grandeza entre modelos do mesmo fornecedor, e estourar trunca sem avisar.
 é escolha ruim para reescrever texto longo, porque paga um custo fixo alto.
 ↳ [ferramentas-de-ia.md](ferramentas-de-ia.md)
 
+**SFT** (Supervised Fine-Tuning) — segunda fase de treino de um modelo de linguagem: pares
+entrada→saída da tarefa desejada, em vez de texto corrido. É o que transforma um completador
+de texto num executor de tarefa — e o que apaga competência geral se feito sem replay.
+↳ [treino-de-modelos.md](treino-de-modelos.md)
+
+**Replay** — misturar uma fração do dado de pré-treino ao lote de um fine-tuning para que o
+modelo não esqueça o que já sabia. Barato e sem custo mensurável na tarefa nova.
+↳ [treino-de-modelos.md](treino-de-modelos.md)
+
+**Esquecimento catastrófico** — quando um treino novo sobrescreve os pesos que sustentavam
+uma capacidade anterior. A capacidade não "enfraquece": desaba, e só aparece se for medida.
+↳ [treino-de-modelos.md](treino-de-modelos.md)
+
+**Juiz-LLM** — usar um modelo de linguagem para avaliar as saídas de outro. É um instrumento
+de medição como qualquer outro: tem ruído próprio, que precisa ser medido antes de o placar
+significar alguma coisa.
+↳ [treino-de-modelos.md](treino-de-modelos.md)
+
+**Few-shot / 5-shot** — avaliar (ou usar) um modelo dando alguns exemplos resolvidos no
+próprio prompt, sem treinar nada. Mede a capacidade de generalizar a partir do contexto —
+e por isso é das primeiras métricas a cair quando o modelo começa a decorar o treino.
+↳ [treino-de-modelos.md](treino-de-modelos.md)
+
 **Saída estruturada** — pedir ao modelo que responda em JSON com formato fixo. Continua sendo
 **entrada não confiável**: todo identificador que ele devolver precisa ser conferido.
 ↳ [ferramentas-de-ia.md](ferramentas-de-ia.md)
