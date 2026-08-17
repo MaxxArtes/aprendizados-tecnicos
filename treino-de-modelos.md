@@ -448,3 +448,91 @@ trate 5+ como zona de memorização; 40+ é desperdício com dano.
 **Como verificar:** acompanhe uma métrica de generalização (few-shot, benchmark de
 língua) junto com o loss durante a fase repetida — a queda do few-shot denuncia a
 memorização antes do loss contar qualquer coisa.
+
+## O cronograma de LR tem que ser dirigido pelo limite que aperta primeiro
+
+**Sintoma:** o treino roda inteiro, termina no número de passos combinado, e a curva de
+perda fica plana até o fim — sem a queda acentuada que o cronograma prometia. O log mostra
+a taxa de aprendizado no valor de pico do começo ao fim, mas nenhuma configuração parece
+errada, e o mesmo código já produziu a queda em treinos anteriores.
+
+**Causa:** o laço de treino tem **dois** limites — um teto de passos e um orçamento de
+tempo — e o cronograma foi escrito para se guiar por apenas um deles. Um cronograma
+warmup-estável-decaimento decide entrar na fase de decaimento quando a fração de progresso
+passa de um limiar. Se essa fração é calculada por *tempo decorrido ÷ orçamento de tempo*
+mas o run termina por *teto de passos*, a fração nunca chega perto do limiar: o treino
+inteiro acontece no platô e a fase onde a maior parte da queda acontece simplesmente não
+ocorre. O código está correto quando o run para por tempo e silenciosamente errado quando
+para por passos. Nada avisa: não há exceção, não há aviso, e o run "termina com sucesso".
+
+**Exemplo concreto:** um run configurado com orçamento de 69 horas mas com teto de passos
+que se esgota em 9 horas termina com a fração de progresso em 0,13. O decaimento começaria
+em 0,80. O run de comparação — mesmo código, mesma função — tinha orçamento de 18.000 s e
+durou 18.024 s: parou por tempo, a fração chegou a 1,0 e o decaimento aconteceu inteiro.
+Comparar a perda dos dois é comparar um modelo resfriado com um modelo ainda quente, e a
+diferença (da ordem de 0,1 de perda de validação) seria creditada à mudança que se queria
+medir.
+
+**Regra:** quando o laço tem dois limites, a fração de progresso é o **máximo** das duas
+frações — o limite que apertar primeiro assume sozinho. Não deixe isso depender de alguém
+lembrar de passar uma variável de ambiente na linha de lançamento.
+
+```python
+frac_passo   = min(1.0, passo / max(1, MAX_PASSOS))
+frac_relogio = min(1.0, decorrido / max(1.0, ORCAMENTO_S))
+frac = max(frac_passo, frac_relogio)
+```
+
+**Como verificar:** imprima a taxa de aprendizado **efetiva** (a que foi para o otimizador)
+e a fração de progresso em toda avaliação. Antes de lançar, calcule qual dos dois limites
+será atingido primeiro e confira se a fração chega a 1,0 nesse ponto.
+
+## Uma variável de estado com dois consumidores distantes: conserte o produtor
+
+**Sintoma:** você identifica um valor calculado errado, aplica a correção no lugar onde o
+sintoma aparece, confirma que o sintoma sumiu — e o experimento continua inválido por um
+motivo que não estava sendo procurado.
+
+**Causa:** a variável acumulou a semântica de "progresso geral" e foi injetada em domínios
+diferentes do sistema. No caso de um treino: a mesma fração governa a fase de decaimento do
+otimizador **e** o momento em que o carregador de dados troca a mistura do corpus. Corrigir
+o valor pelo lado do otimizador é *shotgun surgery*: você conserta o efeito visível e o
+outro consumidor continua lendo o valor errado, sem emitir sinal nenhum.
+
+**Regra:** defeito preso a uma variável de estado exige enumerar **todos** os consumidores
+dela antes de consertar (`grep` do nome, não do sintoma), e o conserto vai no **produtor**
+do valor. Conserto aplicado a um consumidor é parcial por definição.
+
+**Como verificar:** depois de consertar, procure a variável de novo e confirme que cada
+ocorrência lê o valor corrigido. Se o conserto foi aplicado por fora (multiplicador,
+sobreposição, remendo em tempo de execução), ele quase certamente alcança um consumidor só.
+
+## Todo processo de execução longa nasce com superfície de controle
+
+**Sintoma:** um job de horas — treino, indexação, migração — está com um parâmetro errado.
+A única saída visível é matar o processo e recomeçar do último checkpoint, perdendo tempo
+já pago e assumindo o risco da retomada.
+
+**Causa:** parâmetros lidos do ambiente na importação viram constantes de módulo. Depois
+disso não há como alterá-los de fora: mudar variável de processo vivo exige `gdb`/pyrasite
+e a capacidade `CAP_SYS_PTRACE`, que a maioria dos contêineres de nuvem não concede e que
+não se adiciona a contêiner já em execução.
+
+**Regra:** todo laço longo relê um arquivo (local ou de bucket) a cada N iterações e aplica
+um conjunto **fechado** de chaves. São ~15 linhas, e é a diferença entre um comando e uma
+retomada. Três detalhes que só aparecem no uso:
+
+- **chave ausente ≠ "não deu para ler"**: falha de rede tem que manter o que estava
+  valendo, enquanto ordem removida restaura o padrão. Tratar os dois casos igual faz o
+  "limpar" mentir — o parâmetro alterado continua valendo até o fim do run;
+- **parâmetro de rota usa "não mexer" explícito** (um sentinela como `-1`), não padrão de
+  fábrica: limpar a ordem não pode desfazer uma correção feita no meio do processo. E o
+  valor "desligado" precisa ser distinguível de "ausente";
+- **em execução distribuída, só o rank 0 lê e o resultado é transmitido** — e o vetor
+  transmitido tem que ter o mesmo tamanho em todos os ramos do código, senão a barreira
+  trava com as GPUs a 100% sem fazer nada.
+
+**Como verificar:** confirme a ordem pelo log do **alvo** (uma linha do tipo
+`{"controle_recebido": ...}`), nunca pela mensagem de sucesso da ferramenta que enviou.
+E registre no log a **transição** "havia ordem → não há mais": sem ela, uma pausa cancelada
+continua sendo a última notícia e quem monitora não distingue pausa de travamento.

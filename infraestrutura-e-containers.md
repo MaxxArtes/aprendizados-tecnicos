@@ -530,3 +530,32 @@ destruição com a mesma seriedade do de criação, porque é ele que para a cob
 
 **Como verificar:** para cada operação do seu cliente, chame as duas versões e anote a
 matriz do que funciona onde — ela raramente é uniforme.
+
+## Alterar um processo vivo por fora exige capacidade que o contêiner de nuvem não dá
+
+**Sintoma:** um processo de longa duração está com um parâmetro errado e você quer trocá-lo
+em memória, sem reiniciar. As receitas na internet dizem para usar `gdb` ou `pyrasite`, e
+nada funciona no contêiner.
+
+**Causa:** anexar a outro processo (`PTRACE_ATTACH`) exige a capacidade `CAP_SYS_PTRACE`.
+Provedores de contêiner normalmente não a concedem, e capacidade **não se adiciona a
+contêiner já em execução** — é decidida na criação. Somam-se dois outros bloqueios comuns:
+`gdb` não vem instalado em imagem enxuta, e `/proc/sys/kernel/yama/ptrace_scope` pode
+restringir a anexação mesmo com a capacidade presente.
+
+**Exemplo concreto:** `grep CapEff /proc/self/status` devolvendo `00000000a80405fb`. O
+`CAP_SYS_PTRACE` é o bit 19 (`0x80000`); `0xa80405fb & 0x80000 == 0`, ou seja, ausente. Sem
+esse teste a conclusão apressada é "o gdb está com problema".
+
+**Regra:** antes de contar com injeção em processo vivo, teste os três pré-requisitos —
+binário presente, bit 19 no `CapEff`, `ptrace_scope`. Se algum falhar, o caminho é a
+superfície de controle **dentro** do programa (um arquivo de ordens relido pelo laço), que
+não depende de capacidade nenhuma.
+
+**Como verificar:**
+
+```sh
+grep -E '^CapEff' /proc/self/status          # bit 19 (0x80000) ligado?
+cat /proc/sys/kernel/yama/ptrace_scope        # 0 permissivo, 1 so descendente
+command -v gdb
+```
