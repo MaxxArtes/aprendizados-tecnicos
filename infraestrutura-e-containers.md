@@ -559,3 +559,80 @@ grep -E '^CapEff' /proc/self/status          # bit 19 (0x80000) ligado?
 cat /proc/sys/kernel/yama/ptrace_scope        # 0 permissivo, 1 so descendente
 command -v gdb
 ```
+
+## "Job provado" é provado no AMBIENTE em que rodou, não em qualquer um
+
+**Sintoma:** um script que roda há semanas — que produziu resultados publicados — quebra no
+primeiro segundo ao ser executado numa máquina nova, com um erro banal de dependência.
+
+**Causa:** o script nasceu para uma imagem que já trazia a dependência pronta. O caminho de
+instalação existia no código, mas **nunca foi exercitado**, porque naquela imagem o `import`
+sempre funcionou. Trocar de provedor, de imagem ou de tipo de máquina expõe um trecho que
+ninguém testou.
+
+**Exemplo concreto:** uma bateria de avaliação rodava havia dias em imagem de GPU com o
+framework de treino pré-instalado. Ao ser lançada numa máquina de CPU com a distribuição
+padrão, morreu em `ModuleNotFoundError` — o script **nunca instalava** o framework, apenas
+o importava. E a mesma execução revelou um segundo problema da mesma família: a linha de
+instalação usava uma opção do gerenciador de pacotes que **só existe em versões recentes**
+(no caso, `--break-system-packages`, introduzida no pip 23.0.1). Na distribuição da imagem
+nova, o gerenciador era mais antigo, a opção virou erro de sintaxe — e o `| tail -1` no fim
+do comando engolia a mensagem.
+
+**Regra:** antes de rodar um script conhecido em ambiente novo, liste as suposições que a
+imagem antiga satisfazia de graça — dependências pré-instaladas, versões de ferramenta,
+aceleradores presentes. **Instalação que nunca falhou pode nunca ter rodado.**
+
+**Como verificar:**
+
+```sh
+# a opção que você usa existe nesta versão?
+pip install --help 2>&1 | grep -q "break-system-packages" && OPT="--break-system-packages"
+# e o import realmente funciona ANTES do passo caro
+for m in torch numpy; do python3 -c "import $m" || { echo "SEM $m"; exit 1; }; done
+```
+
+## Pagar acelerador e rodar na CPU é o pior desfecho, e é silencioso
+
+**Sintoma:** o job roda até o fim e entrega resultado correto, só que muito mais devagar do
+que deveria. A conta chega com o preço da máquina cara.
+
+**Causa:** a instalação escolheu a variante do framework **sem suporte ao acelerador**
+(tipicamente porque o índice de pacotes foi fixado na variante de CPU, copiado de um script
+antigo). O código faz `dispositivo = "acelerador" se disponível senão "cpu"` e cai
+silenciosamente no ramo de CPU — que é o comportamento certo para portabilidade e o errado
+para a conta.
+
+**Regra:** o fallback para CPU é aceitável quando não há acelerador; é **defeito** quando
+há um e ele não está sendo visto. Detecte o hardware, instale a variante correspondente, e
+**aborte** se o hardware existir e o framework não o enxergar.
+
+**Como verificar:**
+
+```sh
+if command -v nvidia-smi >/dev/null && nvidia-smi -L | grep -q GPU; then
+  python3 -c "import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)" \
+    || { echo "GPU presente e invisível ao framework — abortando"; exit 1; }
+fi
+```
+
+## Dentro de um guarda automático, texto é documentação; só o bloqueio é guarda
+
+**Sintoma:** você cria um mecanismo que injeta as regras no momento exato da ação — e
+continua violando as regras injetadas.
+
+**Causa:** injeção informa, não obriga. Num mesmo mecanismo podem conviver regras de dois
+tipos: as que **impedem** a ação até um artefato existir, e as que apenas **aparecem** como
+texto. Só as primeiras mudam comportamento; as segundas você lê e segue adiante.
+
+**Exemplo concreto:** um gancho de pré-execução bloqueava o lançamento sem recibo de
+verificação (funcionou sempre) e no mesmo bloco injetava regras sobre declarar a trajetória
+esperada e armar a checagem de encerramento (nunca aplicadas, mesmo lidas no instante do
+disparo).
+
+**Regra:** para cada regra que você quer que valha, pergunte **qual artefato prova que ela
+foi seguida** — e exija o artefato. Regra sem artefato exigível é documentação, e a
+diferença aparece exatamente no dia cansado.
+
+**Como verificar:** conte quantas das suas regras têm um arquivo, recibo ou marcador que o
+guarda cheque. As que não têm são as que você vai violar.

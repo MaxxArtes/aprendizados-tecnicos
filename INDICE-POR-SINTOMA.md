@@ -1,7 +1,7 @@
 # Índice por sintoma
 
 Você não lembra o nome da lição — lembra do que está vendo na tela. Procure aqui pelo que
-está acontecendo. 274 sintomas, em ordem alfabética.
+está acontecendo. 277 sintomas, em ordem alfabética.
 
 Nem toda lição tem sintoma; algumas são decisões de arquitetura, não bugs. Essas estão só
 nos arquivos temáticos, listados no [README](README.md).
@@ -143,6 +143,7 @@ nos arquivos temáticos, listados no [README](README.md).
 | o DELETE devolve 404 numa versão da API e funciona na outra; a listagem faz o oposto. | [APIs em transição de versão: cada operação pode morar numa versão diferente](infraestrutura-e-containers.md#apis-em-transição-de-versão-cada-operação-pode-morar-numa-versão-diferente) | Infra |
 | o deploy fica verde e a primeira requisição devolve erro 500 dizendo que a tabela não existe. | [`relation "x" does not exist` significa que a migração não faz parte do deploy](banco-de-dados.md#relation-x-does-not-exist-significa-que-a-migração-não-faz-parte-do-deploy) | Banco |
 | o feed fica progressivamente mais lento conforme o engajamento cresce, sem nenhuma consulta aparentemente pesada. | [`include` de ORM para "só contar" carrega todas as linhas filhas](banco-de-dados.md#include-de-orm-para-só-contar-carrega-todas-as-linhas-filhas) | Banco |
+| o job entrega resultado certo mas muito mais devagar do que deveria, e a maquina cara foi cobrada. | [Pagar acelerador e rodar na CPU é o pior desfecho, e é silencioso](infraestrutura-e-containers.md#pagar-acelerador-e-rodar-na-cpu-é-o-pior-desfecho-e-é-silencioso) | Infra |
 | o job termina com `error: ""` e você não sabe o que aconteceu. | [`str(asyncio.TimeoutError())` é string vazia](automacao-e-agendamento.md#strasynciotimeouterror-é-string-vazia) | Automação |
 | o JSON emitido por um modelo é cortado no meio quando contém uma lista. | [Extração de JSON embutido em texto: regex não-greedy trunca em array aninhado](encoding-e-midia.md#extração-de-json-embutido-em-texto-regex-não-greedy-trunca-em-array-aninhado) | Encoding |
 | o launcher funciona só no PC de quem criou; em outro usuário dá "o sistema não pode encontrar o caminho especificado". | [`.bat` que aponta pro `streamlit.exe` do Python da Microsoft Store não roda em outra máquina](windows-e-powershell.md#bat-que-aponta-pro-streamlitexe-do-python-da-microsoft-store-não-roda-em-outra-máquina) | Windows |
@@ -197,6 +198,7 @@ nos arquivos temáticos, listados no [README](README.md).
 | roda no seu terminal e estoura ImportError/ModuleNotFoundError na plataforma de deploy, sempre nos imports do próprio projeto. | [Import de Python quebra conforme o processo sobe como script ou como pacote](deploy-e-build.md#import-de-python-quebra-conforme-o-processo-sobe-como-script-ou-como-pacote) | Deploy |
 | rotas chamando `CREATE TABLE IF NOT EXISTS` no caminho quente, a cada requisição. | [DDL idempotente em tempo de requisição: atalho legítimo com prazo de validade](banco-de-dados.md#ddl-idempotente-em-tempo-de-requisição-atalho-legítimo-com-prazo-de-validade) | Banco |
 | rotina de clone ou backup falha em alguns repositórios, ou gera artefato inválido. | [Repositório vazio não se detecta pelo branch padrão](git.md#repositório-vazio-não-se-detecta-pelo-branch-padrão) | Git |
+| script que roda ha semanas quebra no primeiro segundo numa maquina nova, com erro banal de dependencia. | ["Job provado" é provado no AMBIENTE em que rodou, não em qualquer um](infraestrutura-e-containers.md#job-provado-é-provado-no-ambiente-em-que-rodou-não-em-qualquer-um) | Infra |
 | sequência de "está 100% funcionando agora" seguida imediatamente do mesmo erro em produção, várias vezes seguidas. | [Agente que narra sucesso não substitui verificação](ferramentas-de-ia.md#agente-que-narra-sucesso-não-substitui-verificação) | IA |
 | seu script abre o dropdown, procura as opções dentro do campo e não acha nada — mas o menu está aberto na tela. | [Select "custom" de UI renderiza as opções num portal fora do campo](frontend-e-nextjs.md#select-custom-de-ui-renderiza-as-opções-num-portal-fora-do-campo) | Frontend |
 | sob dois usuários ao mesmo tempo, um baixa o documento do outro, ou recebe um arquivo pela metade; solo nunca reproduz. | [Nome de arquivo de saída fixo num handler web faz requisições concorrentes se atropelarem](arquitetura-e-produto.md#nome-de-arquivo-de-saída-fixo-num-handler-web-faz-requisições-concorrentes-se-atropelarem) | Arquitetura |
@@ -270,6 +272,7 @@ nos arquivos temáticos, listados no [README](README.md).
 | você adiciona a variável no painel, a feature continua desligada, e a suspeita cai sobre o código. | [Variável de ambiente nova só vale no próximo deploy](deploy-e-build.md#variável-de-ambiente-nova-só-vale-no-próximo-deploy) | Deploy |
 | você calibra com poucos itens, encontra uma razão em torno de 0,8, promete um número — e o real vem cerca de 20% acima, fora da faixa que você deu com… | [Não extrapole tamanho de acervo a partir de amostra pequena](encoding-e-midia.md#não-extrapole-tamanho-de-acervo-a-partir-de-amostra-pequena) | Encoding |
 | você copia o valor de uma variável de um projeto para outro porque "tem o mesmo nome", e a aplicação sobe apontando para o banco de outro sistema — e… | [Mantenha um índice de nomes de variáveis — nunca de valores](seguranca-e-segredos.md#mantenha-um-índice-de-nomes-de-variáveis-nunca-de-valores) | Segurança |
+| voce criou um mecanismo que injeta as regras no momento da acao e continua violando as regras injetadas. | [Dentro de um guarda automático, texto é documentação; só o bloqueio é guarda](infraestrutura-e-containers.md#dentro-de-um-guarda-automático-texto-é-documentação-só-o-bloqueio-é-guarda) | Infra |
 | você embrulha um backup em zip esperando economia relevante e ganha uns poucos por cento. | [Compressão dupla não rende quase nada](encoding-e-midia.md#compressão-dupla-não-rende-quase-nada) | Encoding |
 | você está prestes a apagar uma tabela grande "sem uso" e descobre, tarde, que ela alimentava um painel. | [Auditoria de objeto órfão exige três frentes — e busca por nome cru](banco-de-dados.md#auditoria-de-objeto-órfão-exige-três-frentes-e-busca-por-nome-cru) | Banco |
 | você exporta N itens e recebe menos que N arquivos, sem erro. Um sobrescreveu o outro. | [Ao achatar um namespace em nomes de arquivo, verifique colisão por maiúscula](windows-e-powershell.md#ao-achatar-um-namespace-em-nomes-de-arquivo-verifique-colisão-por-maiúscula) | Windows |
