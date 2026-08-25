@@ -636,3 +636,25 @@ diferença aparece exatamente no dia cansado.
 
 **Como verificar:** conte quantas das suas regras têm um arquivo, recibo ou marcador que o
 guarda cheque. As que não têm são as que você vai violar.
+
+## A API de criação pode reportar falha e mesmo assim criar o recurso que cobra
+
+**Sintoma:** você lança uma instância na nuvem, a resposta da API diz `success: false`,
+você assume que não subiu — e horas depois descobre uma instância viva cobrando.
+
+**Causa:** criação de recurso não é atômica na borda da API. O provedor pode falhar num
+passo tardio (rede, provisionamento) e devolver falha, mas o recurso **já foi criado** e já
+vem com um id de contrato na própria resposta de erro. Confiar no campo `success` deixa um
+órfão cobrando sem ninguém olhando.
+
+**Exemplo concreto:** uma chamada de criação de instância devolveu `success: false`, mas a mesma resposta trazia um id de contrato; a instância estava viva e cobrando, e só apareceu quando a lista de recursos ativos foi conferida logo depois. Confiar no `success: false` teria deixado a máquina cobrando a noite inteira.
+
+**Regra:** trate toda resposta de criação como possivelmente **parcial**. Procure um id de
+recurso/contrato na resposta **independentemente do campo de sucesso**, e reconcilie contra
+a lista real de recursos ativos logo após o lançamento. Se apareceu id: destrua (se não
+quer) ou registre o prazo de vigilância (se quer). O sucesso do lançamento se confirma na
+lista, não no campo `success`.
+
+**Como verificar:** depois de todo lançamento, liste os recursos ativos e cruze com o que
+você acha que criou. Um recurso na lista que a sua contabilidade não esperava é o primeiro a
+resolver — é dinheiro cobrando agora.

@@ -615,3 +615,30 @@ CPU dedicada ou AMD achando que precisa de velocidade, troque o runtime primeiro
 em modo interativo e trava a medição). Se o gguf nativo não estiver ~10x mais rápido que o
 PyTorch, o build provavelmente não pegou AVX — confirme que compilou com `-DGGML_NATIVE=ON`
 na máquina de destino.
+
+## Recompensa verificável vence juiz-LLM quando a tarefa é verificável
+
+**Sintoma:** você quer melhorar o raciocínio de um modelo com aprendizado por reforço e
+pensa em usar um (ou vários) modelo grande como juiz da recompensa — o mesmo painel que já
+usa para avaliação.
+
+**Causa:** RL precisa de **milhares a milhões** de avaliações de recompensa, uma por
+amostra gerada. Julgar cada amostra com modelos grandes por API tem três problemas: (1) o
+custo explode e a latência trava o laço de RL — é um regime totalmente diferente de uma
+avaliação única sobre um conjunto fixo; (2) recompensa por julgamento é **gameável** — o
+modelo aprende a agradar o juiz sem melhorar de verdade; (3) usar a saída de um modelo de
+terceiros como sinal para treinar um concorrente costuma violar os termos de uso dele. Uma
+tarefa **verificável** (código que passa no teste, conta que bate, transformação de dados
+cuja saída se confere) não precisa de juiz nenhum: a recompensa é uma função determinística.
+
+**Exemplo concreto:** julgar cada amostra de um treino de RL com um painel de três modelos grandes por API, a milhares de amostras por passo, projeta centenas a milhares de dólares só em chamadas — enquanto um verificador que executa o código e confere a saída custa perto de zero e não pode ser enganado.
+
+**Regra:** para o que é verificável, use um **verificador programático** — barato, objetivo,
+não-gameável e sem risco de licença. Reserve o juiz-LLM para qualidade **subjetiva** (a
+resposta é natural? o resumo é fiel?), e mesmo aí não chame o painel por amostra: use o
+painel **uma vez** para rotular um conjunto e treine um **modelo de recompensa pequeno** que
+roda dentro do laço.
+
+**Como verificar:** pergunte "consigo checar essa saída com um script?". Se sim, é caso de
+verificador, não de juiz. Estime o custo do RL como (amostras × custo por avaliação de
+recompensa) **antes** de escolher o método — é aí que o painel por API se revela inviável.

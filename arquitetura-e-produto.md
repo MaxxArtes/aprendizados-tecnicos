@@ -478,3 +478,30 @@ catch (err) { throw err; } // e a UI mantém o rascunho para reenvio
 **Exemplo concreto:** A rota apaga `documento_gerado.pdf` e `temp_image.png`, regrava esses mesmos nomes e responde com `FileResponse("documento_gerado.pdf")`. Dois envios simultâneos brigam pelos mesmos dois arquivos globais.
 
 **Regra:** Saída por requisição vai em caminho único (tempfile/UUID) ou, melhor, direto num buffer em memória (`BytesIO`) devolvido no response — nada de nome fixo compartilhado nem "limpar antigos" como estratégia. Estado compartilhado no filesystem é corrida garantida assim que houver dois usuários.
+
+## Antes de aumentar a janela de contexto, prove que o modelo usa a que já tem
+
+**Sintoma:** um caso de uso (ler um documento inteiro, raciocinar sobre um arquivo grande)
+parece exigir uma janela de contexto muito maior, e a reação é treinar/estender para 8k,
+16k ou mais.
+
+**Causa:** dois enganos escondidos. (1) O modelo pode **não usar** o contexto que já tem —
+medindo a perda por posição dentro da janela, é comum ela parar de cair bem antes do limite
+(satura em, digamos, 256-384 tokens de uma janela de 512). Estender uma janela que ele não
+aproveita é comprar capacidade morta. (2) O custo de janela grande cai na **inferência**,
+não no treino: a atenção é O(n²) e o cache de estado cresce linear com o contexto — num
+dispositivo, o "prefill" de milhares de tokens leva dezenas de segundos.
+
+**Exemplo concreto:** uma sonda de perda por posição numa janela de 512 mostrou a perda parando de cair por volta de 256-384 tokens e voltando a subir na última faixa — o modelo não usava os últimos ~25% da janela que já pagava. Estender para 2k ali teria comprado capacidade que ele nem começou a usar.
+
+**Regra:** antes de estender, meça a perda **por faixa de posição** e prove que o modelo
+lucra até perto do limite atual. E saiba que a extensão depende da codificação posicional:
+**RoPE** (rotacional, relativa) estende barato por interpolação; **posição aprendida
+absoluta** não tem embeddings além do tamanho treinado — estender exige aumentar a tabela e
+re-treinar as posições novas. Para muitos casos de "documento grande", recuperar o trecho
+certo (RAG) mais um laço agêntico resolve sem janela gigante.
+
+**Como verificar:** rode uma sonda de NLL por posição; se a perda para de cair em X abaixo
+do limite, o gargalo não é a janela. No código, cheque se a posição é RoPE (`rotary`,
+`freqs`) ou aprendida (`nn.Embedding(block_size, ...)`) — isso decide se estender é barato
+ou caro.

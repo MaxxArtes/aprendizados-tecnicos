@@ -536,3 +536,68 @@ retomada. Três detalhes que só aparecem no uso:
 `{"controle_recebido": ...}`), nunca pela mensagem de sucesso da ferramenta que enviou.
 E registre no log a **transição** "havia ordem → não há mais": sem ela, uma pausa cancelada
 continua sendo a última notícia e quem monitora não distingue pausa de travamento.
+
+## Throughput instantâneo engana; meça pelo acumulado
+
+**Sintoma:** o número de tokens por segundo impresso no log despenca ~30% de uma leitura
+para a outra e fica baixo por algumas medições. A máquina paga parece render metade, e o
+impulso é matar o run e relançar em outra.
+
+**Causa:** o tok/s impresso costuma ser uma medida **instantânea** — a janela em que ele
+foi amostrado caiu num momento lento: gravação de checkpoint, contenção de disco/rede num
+host compartilhado, um vizinho roubando banda de PCIe. A ocupação de GPU segue em 100%
+porque a amostra pega as rajadas de cálculo, mas a média daquele intervalo caiu. Uma
+leitura instantânea baixa não é a taxa real do run.
+
+**Exemplo concreto:** duas leituras seguidas de um treino imprimiram 83 mil e 87 mil tokens/s — parecia queda de ~30% e relançamento na certa. O acumulado (tokens processados ÷ tempo de parede) estava em ~219 mil o tempo todo; as leituras baixas caíram na janela de gravação de checkpoint num host compartilhado.
+
+**Regra:** julgue o throughput pelo **acumulado** — tokens realmente processados ÷ tempo de
+parede desde o início — nunca pela última leitura instantânea. Só trate como regressão real
+se o acumulado cair e **persistir**.
+
+**Como verificar:** `tokens_processados / segundos_decorridos`. Se o acumulado bate com o
+esperado, o mergulho instantâneo era amostragem — não mate o run por causa dele.
+
+## Checkpoint fundido não traz o estado do otimizador — reinício sem warmup dá pico
+
+**Sintoma:** você retoma o treino a partir de um modelo fundido (merge de pesos, ou base +
+adapter fundido) e a perda dá um pico logo nos primeiros passos, apagando parte do que a
+fusão tinha ganho.
+
+**Causa:** um checkpoint **fundido** normalmente guarda só os pesos — não os momentos do
+otimizador (Adam, Muon). Ao retomar, o otimizador começa do zero: os primeiros passos são
+grandes e mal-direcionados e sacodem os pesos antes de o estado se reconstruir. É diferente
+de retomar de um checkpoint de treino, que traz o estado do otimizador junto e continua de
+onde parou.
+
+**Exemplo concreto:** ao retomar de um modelo fundido (só pesos), o log de carga registrou o estado do otimizador como ausente e o descartou. Com um warmup de 150 passos, a perda de validação inicial ficou estável; sem warmup, ela subia nos primeiros passos antes de assentar.
+
+**Regra:** ao semear um treino a partir de um checkpoint só-pesos/fundido, use um **warmup
+curto** de taxa de aprendizado (dezenas a poucas centenas de passos) para o otimizador
+reconstruir o estado sem pico. Retomada de um checkpoint completo (com estado) pode
+dispensar warmup.
+
+**Como verificar:** o log de carga deve dizer se o estado do otimizador veio ou foi
+descartado ("optimizer state discarded / not found"). Se foi descartado, warmup é
+obrigatório — e a perda dos primeiros passos deve subir pouco ou nada.
+
+## Avaliação em voo com n pequeno é ruído; leia a perda, não o acerto
+
+**Sintoma:** as mini-avaliações que rodam durante o treino (n pequeno, ~200 itens) sobem e
+descem 3-5 pontos entre uma e outra. Um pico anima, uma queda assusta, e nenhum dos dois se
+confirma na medição seguinte.
+
+**Causa:** acurácia sobre n=200 tem barra de erro larga — ±3-4 pontos é variação de
+amostra, não sinal. Um único ponto alto (ou baixo) reverte logo. Ler a tendência do run
+pela acurácia dessas sondas é ler ruído amplificado.
+
+**Exemplo concreto:** uma sonda de n=200 marcou 42,0 num ponto e 36,5 no seguinte — 5,5 pontos de variação que reverteram sozinhos — enquanto a NLL do mesmo trecho caía suave de 2,01 para 1,86. Quem lesse a acurácia teria comemorado e depois se assustado; a NLL contava a história real.
+
+**Regra:** durante o treino, use a **perda/NLL** como sinal — ela é medida em todos os
+tokens e é muito mais estável que acerto binário sobre poucos itens. Guarde a **decisão**
+("esse checkpoint é melhor?") para a régua completa de n grande no fim. Sonda pequena é
+termômetro de tendência, não juiz.
+
+**Como verificar:** compare a variação ponto-a-ponto da acurácia da sonda com a da NLL — a
+NLL é sensivelmente mais suave. Só trate uma mudança de acurácia como real se ela persistir
+por várias sondas ou reaparecer na régua grande.

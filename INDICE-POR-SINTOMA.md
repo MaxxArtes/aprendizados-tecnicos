@@ -1,7 +1,7 @@
 # Índice por sintoma
 
 Você não lembra o nome da lição — lembra do que está vendo na tela. Procure aqui pelo que
-está acontecendo. 277 sintomas, em ordem alfabética.
+está acontecendo. 281 sintomas, em ordem alfabética.
 
 Nem toda lição tem sintoma; algumas são decisões de arquitetura, não bugs. Essas estão só
 nos arquivos temáticos, listados no [README](README.md).
@@ -15,6 +15,7 @@ nos arquivos temáticos, listados no [README](README.md).
 | `npm run dev` roda liso, mas o build na plataforma falha com `'x' is defined but never used` ou `prefer-const`. | [O lint do CI é mais rigoroso que o dev local](deploy-e-build.md#o-lint-do-ci-é-mais-rigoroso-que-o-dev-local) | Deploy |
 | `PUT` no recurso do registro devolve 422 sem explicação útil. | [Update de conjunto de registros DNS pode não ser `PUT`](infraestrutura-e-containers.md#update-de-conjunto-de-registros-dns-pode-não-ser-put) | Infra |
 | a acurácia subiu 2 pontos e não dá para dizer se melhorou ou foi sorte. | [Comparar dois modelos por médias soltas esconde qualquer ganho pagável](treino-de-modelos.md#comparar-dois-modelos-por-médias-soltas-esconde-qualquer-ganho-pagável) | Treino |
+| a API de criação de recurso devolve `success: false`, mas há uma instância viva cobrando. | [A API de criação pode reportar falha e mesmo assim criar o recurso que cobra](infraestrutura-e-containers.md#a-api-de-criação-pode-reportar-falha-e-mesmo-assim-criar-o-recurso-que-cobra) | Infra |
 | a aplicação conecta com uma credencial antiga depois de uma rotação "concluída". | [Duas fontes de verdade para o mesmo segredo divergem em silêncio](seguranca-e-segredos.md#duas-fontes-de-verdade-para-o-mesmo-segredo-divergem-em-silêncio) | Segurança |
 | a aplicação funciona, mas a migration falha com erro de conexão ou timeout de transação. Ou o inverso. | [Integrações gerenciadas criam seis connection strings quase iguais](banco-de-dados.md#integrações-gerenciadas-criam-seis-connection-strings-quase-iguais) | Banco |
 | a automação "não faz nada" na página, mesmo com o content script declarado e a permissão concedida; nenhum campo é tocado. | [O formulário está num iframe — injete e mande mensagem para todos os frames](frontend-e-nextjs.md#o-formulário-está-num-iframe--injete-e-mande-mensagem-para-todos-os-frames) | Frontend |
@@ -35,7 +36,9 @@ nos arquivos temáticos, listados no [README](README.md).
 | a limpeza "roda sem erro" e mesmo assim sobram gigabytes de diretórios temporários no disco. | [`shutil.rmtree` falha em diretório `.git` — e com `ignore_errors=True` falha em silêncio](windows-e-powershell.md#shutilrmtree-falha-em-diretório-git-e-com-ignore_errorstrue-falha-em-silêncio) | Windows |
 | a métrica de uso do recurso fica em zero e você conclui que "ninguém quer isso". | [Regex de detecção estreita demais faz a feature nunca rodar](ferramentas-de-ia.md#regex-de-detecção-estreita-demais-faz-a-feature-nunca-rodar) | IA |
 | a migração falha no meio, depois de já ter alterado dados. | [Renomeação inconsistente entre tabelas do mesmo pipeline](banco-de-dados.md#renomeação-inconsistente-entre-tabelas-do-mesmo-pipeline) | Banco |
+| a mini-avaliação durante o treino sobe e desce vários pontos entre uma medição e a seguinte, sem confirmar. | [Avaliação em voo com n pequeno é ruído; leia a perda, não o acerto](treino-de-modelos.md#avaliação-em-voo-com-n-pequeno-é-ruído-leia-a-perda-não-o-acerto) | Treino |
 | a operação ocasionalmente leva minutos porque um provedor externo está lento, mesmo havendo alternativa disponível. | [Corrida entre dois provedores elimina o pior caso de timeout](apis-e-integracoes.md#corrida-entre-dois-provedores-elimina-o-pior-caso-de-timeout) | APIs |
+| a perda dá um pico nos primeiros passos ao retomar o treino de um modelo fundido (merge de pesos). | [Checkpoint fundido não traz o estado do otimizador — reinício sem warmup dá pico](treino-de-modelos.md#checkpoint-fundido-não-traz-o-estado-do-otimizador--reinício-sem-warmup-dá-pico) | Treino |
 | a regra "funciona" em preview porque simplesmente não é acionada. | [Redirect e rota baseados em **host** não podem ser testados em preview](deploy-e-build.md#redirect-e-rota-baseados-em-host-não-podem-ser-testados-em-preview) | Deploy |
 | a rota de reprocessamento retorna sucesso parcial, ou é cortada pela plataforma; o operador acaba apertando F5 dezenas de vezes. | [Backfill em função serverless morre no timeout](deploy-e-build.md#backfill-em-função-serverless-morre-no-timeout) | Deploy |
 | a rota funciona local e responde 404 em produção; o arquivo "existe" na sua máquina. | [Regra genérica no `.gitignore` pode engolir uma pasta de código](git.md#regra-genérica-no-gitignore-pode-engolir-uma-pasta-de-código) | Git |
@@ -154,6 +157,7 @@ nos arquivos temáticos, listados no [README](README.md).
 | o MFU calculado dá metade do esperado e nenhuma otimização move o número. | [O pico de GPU do datasheet tem um asterisco que dobra o seu denominador](treino-de-modelos.md#o-pico-de-gpu-do-datasheet-tem-um-asterisco-que-dobra-o-seu-denominador) | Treino |
 | o modelo fine-tunado responde tudo com frases literais do treino. | [Dataset pequeno repetido muitas épocas vira decoreba, não estilo](treino-de-modelos.md#dataset-pequeno-repetido-muitas-épocas-vira-decoreba-não-estilo) | Treino |
 | o otimizador que a literatura elogia perde do baseline no seu treino. | [Hiperparâmetro copiado de outro projeto se converte pela escala do tensor](treino-de-modelos.md#hiperparâmetro-copiado-de-outro-projeto-se-converte-pela-escala-do-tensor) | Treino |
+| o número de tokens por segundo no log cai ~30% de uma leitura para a outra e a máquina paga parece render metade. | [Throughput instantâneo engana; meça pelo acumulado](treino-de-modelos.md#throughput-instantâneo-engana-meça-pelo-acumulado) | Treino |
 | o painel de otimização mostra algo como "3 MB → 4 MB" e ninguém entende. | [Recomprimir JPEG frequentemente **aumenta** o arquivo](encoding-e-midia.md#recomprimir-jpeg-frequentemente-aumenta-o-arquivo) | Encoding |
 | o painel referencia dezenas de campos que não existem em nenhuma tabela; parece que falta metade do modelo de dados. | [Coluna "que falta no banco" pode ser medida calculada no modelo de BI](banco-de-dados.md#coluna-que-falta-no-banco-pode-ser-medida-calculada-no-modelo-de-bi) | Banco |
 | o payload da API carrega cada valor duplicado sob duas grafias de chave e ninguém lembra qual o front lê. | [Emitir o mesmo dado sob dois nomes de chave para agradar dois fronts vira dívida permanente](apis-e-integracoes.md#emitir-o-mesmo-dado-sob-dois-nomes-de-chave-para-agradar-dois-fronts-vira-dívida-permanente) | APIs |
