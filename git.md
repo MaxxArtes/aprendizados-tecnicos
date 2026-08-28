@@ -263,3 +263,15 @@ git ls-files | tr 'A-Z' 'a-z' | sort | uniq -d
 **Exemplo concreto:** `.env` foi commitado no primeiro push; semanas depois alguém acrescentou `.env` ao fim do `.gitignore`. O arquivo segue no repo e `git status` nem o mostra como ignorado — porque está rastreado, não ignorado.
 
 **Regra:** Depois de ignorar algo já commitado, é preciso destrackear explicitamente: `git rm --cached .env` e commitar. E lembrar que o histórico ainda contém as versões antigas — se havia segredo real, rotacione, não basta remover.
+
+## Um blob acima de 100 MB num commit local envenena todos os pushes futuros
+
+**Sintoma:** Três erros DIFERENTES no mesmo `git push`, em sequência: `unexpected disconnect while reading sideband packet`, depois `pre-receive hook declined`, depois `pack-objects died of signal 15`. Nenhum diz "arquivo grande".
+
+**Causa:** Um commit antigo (ainda não pushado) carregava arquivos de dados de 150-220 MB. O GitHub rejeita blobs >100 MB (GH001) — e a mensagem clara só aparece se você não cortar a saída. Além disso, comprimir esses blobs custou ~900 MB de RAM ao `pack-objects`, que num servidor disputado foi morto por um guarda de memória (signal 15) — parecendo problema de rede.
+
+**Exemplo concreto:** Repo de código com `*.jsonl` de treino commitados semanas antes. O blob fica na história mesmo depois de deletado do working tree — todo push futuro reempacota e re-tropeça nele.
+
+**Regra:** Dado de treino não entra em repo de código (gitignore preventivo). Enquanto os commits são SÓ locais, o conserto é barato: `git reset --soft origin/main` + `git rm -r --cached <dirs>` + gitignore + um commit novo — os blobs somem da história sem reescrita perigosa. Em máquina com pouca RAM: `git -c pack.threads=1 -c pack.windowMemory=32m push`.
+
+**Verificação:** `git ls-tree -r -l HEAD | awk '$4 > 50000000'` vazio antes do push; e ler a saída COMPLETA do push rejeitado — o motivo real estava lá, cortado por um `tail -3`.

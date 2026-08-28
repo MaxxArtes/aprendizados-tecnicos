@@ -642,3 +642,15 @@ roda dentro do laço.
 **Como verificar:** pergunte "consigo checar essa saída com um script?". Se sim, é caso de
 verificador, não de juiz. Estime o custo do RL como (amostras × custo por avaliação de
 recompensa) **antes** de escolher o método — é aí que o painel por API se revela inviável.
+
+## Juízes-LLM têm teto de rajada: o último da fila falha em massa
+
+**Sintoma:** Num lote de avaliações com juiz-LLM, um item específico volta com 48/50 chamadas falhas — duas vezes seguidas. Rodando o MESMO item isolado, o juiz funciona perfeitamente.
+
+**Causa:** O provedor tolera ~N chamadas em rajada (no caso medido, ~150). Quem entra na fila depois do teto pega erro em massa. Não é o conteúdo do item — é a posição dele na rajada.
+
+**Exemplo concreto:** Painel de 3 avaliações consecutivas de ~67 itens cada; a terceira sempre "falhava". A suspeita inicial (conteúdo do avaliado) custou uma tarde; o teste isolado desmentiu em 2 minutos.
+
+**Regra:** Governador na fila: pausa fixa entre lotes (minutos, não segundos); falha de juiz em massa (>30% do lote) = DESCARTAR a rodada inteira e pausar 30 min — nunca aproveitar as que "passaram"; duas rajadas seguidas = abortar e relatar. E o princípio maior: **falha de juiz nunca vira veredito** — célula fica vazia, não vira nota.
+
+**Verificação:** Re-rodar isolado o item que "falhou em massa"; se funciona, era rajada, não conteúdo.

@@ -1,7 +1,7 @@
 # Índice por sintoma
 
 Você não lembra o nome da lição — lembra do que está vendo na tela. Procure aqui pelo que
-está acontecendo. 281 sintomas, em ordem alfabética.
+está acontecendo. 284 sintomas, em ordem alfabética.
 
 Nem toda lição tem sintoma; algumas são decisões de arquitetura, não bugs. Essas estão só
 nos arquivos temáticos, listados no [README](README.md).
@@ -289,3 +289,6 @@ nos arquivos temáticos, listados no [README](README.md).
 | você quer uma cópia local de um armazenamento remoto e as duas cópias do "mesmo dia" nunca batem. | [Redundância de dado de fonte viva se faz espelhando o destino, não re-executando](infraestrutura-e-containers.md#redundância-de-dado-de-fonte-viva-se-faz-espelhando-o-destino-não-re-executando) | Infra |
 | você tem um valor único que vale para o período inteiro — uma taxa mensal, um custo fixo — e precisa que ele apareça numa tabela cuja granularidade é… | [Valor global do período cabe numa tabela por-item se for distribuído](banco-de-dados.md#valor-global-do-período-cabe-numa-tabela-por-item-se-for-distribuído) | Banco |
 | você troca a origem de um relatório e não tem como provar que melhorou. | [Troca de fonte de dados se valida em tabelas paralelas](automacao-e-agendamento.md#troca-de-fonte-de-dados-se-valida-em-tabelas-paralelas) | Automação |
+| Três erros diferentes no mesmo `git push`: `unexpected disconnect`, `pre-receive hook declined`, `pack-objects died of signal 15`. | [Um blob acima de 100 MB num commit local envenena todos os pushes futuros](git.md#um-blob-acima-de-100-mb-num-commit-local-envenena-todos-os-pushes-futuros) | Git |
+| Juiz-LLM falha em 48/50 chamadas num item do lote, mas funciona perfeitamente com o mesmo item isolado. | [Juízes-LLM têm teto de rajada: o último da fila falha em massa](ferramentas-de-ia.md#juízes-llm-têm-teto-de-rajada-o-último-da-fila-falha-em-massa) | IA |
+| `scp` disse ok mas a máquina remota roda a versão velha; o erro corrigido volta à noite. | [Sucesso de `scp`/comando composto se confere por marcador no destino](infraestrutura-e-containers.md#sucesso-de-scpcomando-composto-se-confere-por-marcador-no-destino) | Infra |

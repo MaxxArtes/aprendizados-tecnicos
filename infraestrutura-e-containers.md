@@ -658,3 +658,15 @@ lista, não no campo `success`.
 **Como verificar:** depois de todo lançamento, liste os recursos ativos e cruze com o que
 você acha que criou. Um recurso na lista que a sua contabilidade não esperava é o primeiro a
 resolver — é dinheiro cobrando agora.
+
+## Sucesso de `scp`/comando composto se confere por marcador no destino
+
+**Sintoma:** O patch "foi aplicado", o `scp` disse ok, mas a máquina remota executa a versão velha do arquivo — e o job noturno morre com um erro que você tinha acabado de corrigir.
+
+**Causa:** Num comando composto (`corrige && scp && executa`), uma parte bloqueada ou falha aborta TODAS as seguintes em silêncio — o patch nunca rodou localmente. O `scp` seguinte então copiou o arquivo velho com sucesso honesto. Mensagens de sucesso descrevem o transporte, não o conteúdo.
+
+**Exemplo concreto:** Correção de dependência num runner remoto; o comando que aplicava o patch dividia a linha com um `pkill` bloqueado por política — tudo abortou junto. O "ok" do `scp` criou a certeza falsa; a madrugada rendeu 28 falhas idênticas do erro já corrigido.
+
+**Regra:** Toda correção enviada carrega um MARCADOR de conteúdo (uma string nova e única). Depois do envio, conferir com contagem explícita nos DOIS lados: `grep -c "marcador" arquivo` local e remoto, comparando com o número esperado. Patch e envio em comandos separados, nunca no mesmo composto que algo bloqueável.
+
+**Verificação:** A contagem do marcador bate na origem e no destino ANTES de executar qualquer coisa que dependa do arquivo.
