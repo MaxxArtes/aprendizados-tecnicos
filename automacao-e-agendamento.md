@@ -589,3 +589,85 @@ moribundos podem reescrevê-lo depois da limpeza — só a checagem de frescor c
 **Como verificar:** para cada leitura de estado no seu automatismo, pergunte: "se este
 valor for da rodada passada, o que acontece?" Se a resposta é uma ação destrutiva ou um
 falso sucesso, falta a prova de frescor.
+
+## Ferramenta de linha de comando pode explicar a falha no stdout, com código de saída ≠ 0
+
+**Sintoma:** um lote de avaliação termina "com sucesso" e grava 0,0 como resultado. Todas as
+tentativas falharam iguais, e o arquivo tem o nome de uma medição boa.
+
+**Causa:** o guarda foi escrito como `if rc == 0: confere_texto()`. A CLI, sem cota, escreveu
+a explicação no stdout e saiu com código 1. O ramo de erro genérico nunca leu a mensagem,
+repetiu a chamada e o lote converteu falha em acerto zero. Zero por cota estourada e zero por
+modelo ruim ficam idênticos em disco.
+
+**Exemplo concreto:** uma bateria de avaliação contra um modelo de referência gravou
+acurácia 0,0 com todas as chamadas falhando por falta de cota.
+
+**Regra:** case o padrão de erro conhecido no texto antes de olhar o código de saída. Grave
+falhas e denominador junto do resultado (`n_ok`, `n_falha`, motivo) em vez de contar falha
+como erro do modelo. Defina antes do run quanto de falha invalida o lote, e marque o arquivo
+como inválido quando passar disso.
+
+**Como verificar:** rode o lote com a credencial propositalmente inválida. O certo é o
+arquivo sair marcado como inválido, com o motivo, e não como 0,0.
+
+## Timeout de `subprocess.run` com `capture_output` pode não liberar a leitura
+
+**Sintoma:** um script que chama outra ferramenta com `timeout=` fica parado horas, sem
+consumir CPU e sem produzir nada.
+
+**Causa:** com `capture_output=True`, a leitura espera o fim do cano de saída. Se a ferramenta
+cria um processo neto que herda o cano e continua vivo, o cano não fecha mesmo depois de o
+filho ser morto pelo timeout.
+
+**Exemplo concreto:** uma bateria de avaliação ficou 7h56 parada assim, sem gasto e sem
+resultado.
+
+**Regra:** para timeout que precisa valer, use `Popen(..., start_new_session=True)` e, no
+estouro, mate o grupo inteiro com `os.killpg`.
+
+**Como verificar:** chame um comando de teste que dispara um neto `sleep 3600` e confirme que
+o timeout devolve o controle no prazo.
+
+## O pré-voo tem que testar o efeito, não a presença do texto
+
+**Sintoma:** o job passou na checagem antes do lançamento, rodou numa máquina paga e morreu
+sem relatar nada. A máquina foi destruída e não há o que diagnosticar.
+
+**Causa:** a checagem procurava o *texto* do mecanismo de relato no script em vez de
+exercitar o mecanismo. A rotina que relatava falhas dependia do ambiente virtual que tinha
+acabado de quebrar, e morreu junto com ele.
+
+**Exemplo concreto:** numa instância nova, `python3 -m venv` criou o diretório sem `pip`
+(faltava o pacote de `ensurepip`), o preparo falhou, e a rotina de relato, que usava esse
+venv, não conseguiu avisar.
+
+**Regra:** o pré-voo executa o caminho de falha de verdade, no ambiente de destino, e confere
+que o aviso chegou. A rotina de relato não depende do que ela relata: ela tem um caminho
+alternativo (o Python do sistema, por exemplo), e, se nada relatar, a máquina fica viva por
+alguns minutos para diagnóstico.
+
+**Como verificar:** injete uma falha proposital no início do job no ambiente de destino e
+confirme que o aviso chegou antes de autorizar o run real.
+
+## Agendador que "renova com sucesso" um link público não prova que o link funciona
+
+**Sintoma:** o app não consegue baixar a atualização nem o modelo, mas a tarefa agendada que
+renova os links roda todo dia, registra sucesso e publica commit novo.
+
+**Causa:** a assinatura de uma URL pré-assinada é calculada localmente com a chave: ela é
+gerada sem erro mesmo se a chave tiver sido revogada no provedor. O armazenamento só recusa
+na hora do download (401). Nada no script fazia um GET nas URLs publicadas.
+
+**Exemplo concreto:** o manifesto público de um app trazia dois links renovados no mesmo dia,
+e os dois respondiam 401; o log dizia "renovado e publicado". A causa confirmada foi uma
+chave local revogada. O conserto passou a buscar a chave no cofre de segredos e a testá-la
+antes de publicar.
+
+**Regra:** a tarefa que publica links termina fazendo um GET (só o primeiro byte) em **cada
+URL de artefato listada no manifesto**, pelo caminho público, e falha alto se não vier
+200/206. URL pré-assinada também expõe identificadores da conta no histórico de um repo
+público; para artefato que já é público, considere um endereço público estável.
+
+**Como verificar:** extraia as URLs do manifesto publicado e rode
+`curl -s -o /dev/null -w '%{http_code}' -r 0-0 <url>` em cada uma, de outra máquina.

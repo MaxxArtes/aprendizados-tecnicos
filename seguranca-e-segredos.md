@@ -742,3 +742,25 @@ bcrypt.hashSync(password, 10);               // salt novo por senha
 **Exemplo concreto:** `src/main/resources/application.yml` com `password:` de um Postgres real, e uma cópia idêntica em `target/classes/application.yml` — ambos rastreados porque o projeto Maven não tinha `.gitignore`.
 
 **Regra:** Nunca ponha segredo na config versionada — leia de variável de ambiente/cofre e commite só um `application.example.yml`. Ignore o diretório de build (`target/`, `bin/`, `dist/`) desde o primeiro commit. Se vazou, rotacione e procure a credencial em todas as cópias, inclusive nos artefatos de build.
+
+## Página pública gerada de dado misto: prefira lista de permissão a lista de proibição
+
+**Sintoma:** uma página pública de resultados, gerada a partir de um placar que mistura
+experimentos abertos e privados, passa a mostrar experimentos privados. O teste de segurança
+do gerador continuava passando.
+
+**Causa:** dois defeitos independentes. (1) O filtro era uma lista de proibição, e faltava
+nela o prefixo de uma família nova de experimentos. (2) A asserção de segurança testava as
+mesmas substrings da lista: um guarda que compartilha a lista com o filtro não pega o que
+falta na lista.
+
+**Exemplo concreto (hipotético):** uma família nova de experimentos, de prefixo ainda fora
+da lista, aparece na página pública e só é notada numa auditoria feita à mão.
+
+**Regra:** o que vai para a página pública passa por uma lista de permissão explícita (só
+sai o que foi nomeado), e o teste do guarda usa uma lista independente e um caso que tem de
+falhar. Família nova de experimento nasce privada. O teste cobre também os outros campos e
+artefatos da página (rótulos, dados de gráfico, arquivos anexos), não só os nomes.
+
+**Como verificar:** crie um item fictício com nome novo, e um campo novo, no dado de origem e
+gere a página. Se algum deles aparecer, o controle de publicação falhou.

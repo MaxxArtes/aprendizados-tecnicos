@@ -47,8 +47,8 @@ pelo **sintoma** é como isto se usa às 2 da manhã.
 | Guia | |
 |---|---|
 | [Comece aqui](COMECE-AQUI.md) | porta de entrada, organizada por situação |
-| [Índice por sintoma](INDICE-POR-SINTOMA.md) | 208 sintomas, para quando você já sabe nomear o problema |
-| [Glossário](GLOSSARIO.md) | 111 termos, em uma linha cada |
+| [Índice por sintoma](INDICE-POR-SINTOMA.md) | 297 sintomas, para quando você já sabe nomear o problema |
+| [Glossário](GLOSSARIO.md) | 129 termos, em uma linha cada |
 
 **Fundamentos e operação**
 

@@ -670,3 +670,24 @@ resolver — é dinheiro cobrando agora.
 **Regra:** Toda correção enviada carrega um MARCADOR de conteúdo (uma string nova e única). Depois do envio, conferir com contagem explícita nos DOIS lados: `grep -c "marcador" arquivo` local e remoto, comparando com o número esperado. Patch e envio em comandos separados, nunca no mesmo composto que algo bloqueável.
 
 **Verificação:** A contagem do marcador bate na origem e no destino ANTES de executar qualquer coisa que dependa do arquivo.
+
+## Teto de memória apertado pode causar releitura e lentidão em vez de matar o processo
+
+**Sintoma:** um job com limite de memória no systemd não morre, mas fica várias vezes mais
+lento e o disco trabalha sem parar.
+
+**Causa:** abaixo do que o processo precisa, o kernel pode despejar páginas do modelo
+mapeado em memória e relê-las do disco a cada passo. O processo sobrevive, mas passa o tempo
+esperando I/O.
+
+**Exemplo concreto:** um modelo de embeddings público de 2,2 GB (e5-large-instruct), sob
+teto apertado, leu 15,7 GB do disco relendo os mesmos pesos, cerca de 3× mais lento que com
+folga.
+
+**Regra:** dimensione o teto pelo tamanho do modelo mais a folga de trabalho, não pelo que
+sobra na máquina. Uma fila pesada por vez, cada uma com teto próprio.
+
+**Como verificar:** compare os bytes lidos do disco (`/proc/<pid>/io`, `read_bytes`) com o
+tamanho do modelo, junto com as métricas de pressão de memória do cgroup
+(`memory.pressure`). Leitura muito maior que o modelo, com pressão alta, indica
+estrangulamento; leitura alta sozinha não prova.

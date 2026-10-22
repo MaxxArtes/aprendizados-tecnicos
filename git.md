@@ -275,3 +275,24 @@ git ls-files | tr 'A-Z' 'a-z' | sort | uniq -d
 **Regra:** Dado de treino não entra em repo de código (gitignore preventivo). Enquanto os commits são SÓ locais, o conserto é barato: `git reset --soft origin/main` + `git rm -r --cached <dirs>` + gitignore + um commit novo — os blobs somem da história sem reescrita perigosa. Em máquina com pouca RAM: `git -c pack.threads=1 -c pack.windowMemory=32m push`.
 
 **Verificação:** `git ls-tree -r -l HEAD | awk '$4 > 50000000'` vazio antes do push; e ler a saída COMPLETA do push rejeitado — o motivo real estava lá, cortado por um `tail -3`.
+
+## O e-mail do autor do commit fica no histórico e em toda cópia já feita
+
+**Sintoma:** um repositório pessoal público mostra, no autor de vários commits, o e-mail
+corporativo de outro trabalho. Nada no conteúdo dos arquivos menciona a empresa, mas o
+histórico menciona.
+
+**Causa:** `user.email` global configurado para o trabalho, numa máquina usada também para
+projetos pessoais. O e-mail do autor faz parte do commit; apagar ou mascarar arquivos depois
+não muda o cabeçalho dos commits antigos. Reescrever o histórico muda as referências do
+repositório, mas não recolhe clones e forks já feitos.
+
+**Exemplo concreto:** dois repositórios pessoais públicos tinham, respectivamente, 21 de 30
+e 5 de 26 commits com o e-mail corporativo registrado como autor.
+
+**Regra:** em máquina compartilhada entre trabalho e projetos pessoais, defina `user.email`
+por repositório ou por pasta (`includeIf "gitdir:..."`), não global. Em repositório público,
+use o e-mail `noreply` do GitHub. Antes de tornar um repositório público, liste os autores do
+histórico inteiro.
+
+**Como verificar:** `git log --all --format='%ae %ce' | sort | uniq -c`.

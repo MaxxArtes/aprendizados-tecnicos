@@ -505,3 +505,23 @@ certo (RAG) mais um laço agêntico resolve sem janela gigante.
 do limite, o gargalo não é a janela. No código, cheque se a posição é RoPE (`rotary`,
 `freqs`) ou aprendida (`nn.Embedding(block_size, ...)`) — isso decide se estender é barato
 ou caro.
+
+## Atualizador com defeito no download não entrega a própria correção
+
+**Sintoma:** depois de publicar a versão nova, os usuários "atualizam" e continuam na versão
+antiga, em laço.
+
+**Causa:** o instalador reaproveitava o APK que já estava em cache sem conferir a versão do
+arquivo. A atualização não baixava nada: reinstalava o que estava no cache. Como o defeito
+estava no próprio caminho de entrega, a versão corrigida não chegava por ele.
+
+**Exemplo concreto:** a versão 0.13 de um app reinstalava a própria 0.13 a cada
+"atualização". O conserto (baixar sempre o arquivo indicado no manifesto e sobrescrever o
+cache) saiu na 0.16, que teve de ser entregue por fora do atualizador.
+
+**Regra:** artefato em cache só se reusa depois de conferir versão ou hash contra o
+manifesto. Tenha um caminho de entrega alternativo (link direto) para quando o defeito
+estiver no próprio atualizador.
+
+**Como verificar:** com a versão N instalada e um APK N em cache, publique N+1 e confira que o
+arquivo baixado tem o hash de N+1.

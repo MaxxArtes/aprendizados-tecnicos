@@ -607,9 +607,22 @@ custava mais que o dobro rodando PyTorch. A troca de runtime deu mais ganho que 
 hardware.
 
 **Regra:** para servir modelo pequeno em produção sobre CPU, use **gguf via llama.cpp /
-llama-server**, não PyTorch. Compile o llama.cpp **nativo na própria máquina que vai rodar**
-(`cmake -B build -DGGML_NATIVE=ON`), nunca o binário prebuilt genérico. Antes de pagar por
-CPU dedicada ou AMD achando que precisa de velocidade, troque o runtime primeiro.
+llama-server**, não PyTorch. Compile o llama.cpp **na própria máquina que vai rodar**
+(`cmake -B build -DGGML_NATIVE=ON`) em vez de usar o binário prebuilt genérico, que no teste
+acima rodou sem AVX. Antes de pagar por CPU dedicada ou AMD achando que precisa de
+velocidade, troque o runtime primeiro.
+
+**Duas ressalvas que vieram depois:**
+- `GGML_NATIVE=ON` serve quando quem compila é a máquina que roda. Em imagem de container
+  reaproveitada em outro host, o binário herda as instruções da CPU que **construiu** a
+  imagem; num host com CPU diferente ele pode morrer com `SIGILL` (código de retorno -4,
+  stdout e stderr vazios), de forma intermitente. Para imagem portátil:
+  `-DGGML_NATIVE=OFF -DGGML_CPU_ALL_VARIANTS=ON -DGGML_BACKEND_DL=ON`. `OFF` puro, sem
+  vetorização, foi 23× mais lento na mesma tarefa (imatrix de um modelo de 269M).
+- O melhor número de threads dependeu de **contenção**. Numa máquina de 2 vCPU disputada
+  por outros serviços, `-t 1` foi 2,9× mais rápido que `-t 2`; numa máquina dedicada,
+  usar todos os núcleos foi o mais rápido. Guarde junto de cada número de velocidade a
+  máquina e a carga em que ele foi medido.
 
 **Verificação:** meça com `llama-bench -m modelo.gguf -n 44 -t <núcleos>` (o `llama-cli` entra
 em modo interativo e trava a medição). Se o gguf nativo não estiver ~10x mais rápido que o
@@ -654,3 +667,28 @@ recompensa) **antes** de escolher o método — é aí que o painel por API se r
 **Regra:** Governador na fila: pausa fixa entre lotes (minutos, não segundos); falha de juiz em massa (>30% do lote) = DESCARTAR a rodada inteira e pausar 30 min — nunca aproveitar as que "passaram"; duas rajadas seguidas = abortar e relatar. E o princípio maior: **falha de juiz nunca vira veredito** — célula fica vazia, não vira nota.
 
 **Verificação:** Re-rodar isolado o item que "falhou em massa"; se funciona, era rajada, não conteúdo.
+
+## Juiz-LLM com a rubrica errada mede outra coisa, e de forma estável
+
+**Sintoma:** um número de qualidade baixo vira decisão de produto ("conversa não é viável
+neste tamanho") e é publicado. Ninguém desconfia porque o juiz é um modelo forte e o número
+se repete entre rodadas.
+
+**Causa:** o juiz recebeu a rubrica de outro trabalho: a de qualidade de *dado de treino*
+(quatro critérios de 0 a 2, aprovação só com soma ≥ 6 e nenhum zero), não a pergunta que a
+decisão precisava ("a resposta faz sentido nesse contexto?"). Ruído do juiz se mede
+repetindo; rubrica errada não aparece na repetição, porque erra igual todas as vezes.
+
+**Exemplo concreto:** num modelo de 269M, a avaliação de conversa com a rubrica de dado de
+treino deu 24,4% (n=160). Uma avaliação nova, noutro conjunto (n=52, não pareada), com juiz
+binário ("faz sentido? sim/não") de três famílias de modelo, deu 77–81% no geral e 34/40
+dentro do escopo do produto. Mudaram a rubrica e o conjunto; estas avaliações não isolam o efeito de cada
+mudança, e o número antigo pesou numa decisão de produto até ser revisto.
+
+**Regra:** a rubrica do juiz é parte do instrumento e se revisa como código: ela tem que
+perguntar exatamente o que a decisão precisa saber. Registre modelo do juiz, rubrica,
+conjunto e n junto de cada número. Use mais de uma família de juiz e leia alguns vereditos à
+mão antes de confiar no agregado.
+
+**Como verificar:** pegue 10 itens que o juiz reprovou e leia. Se você aprovaria a maioria,
+a rubrica está medindo outra coisa.

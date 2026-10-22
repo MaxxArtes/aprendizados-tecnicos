@@ -381,6 +381,11 @@ F1 74,9 → 75,5). O replay não custou nada mensurável na tarefa.
 ajustar), e a bateria de avaliação do SFT inclui SEMPRE um benchmark de competência
 geral, não só a métrica da tarefa.
 
+**Qual replay:** o objetivo é relembrar o que o modelo já faz, então o replay sai de dado
+no formato que ele já viu no treino. Inventar uma tarefa nova para servir de replay (por
+exemplo, pares "continue o texto" cortados do corpus) acrescenta uma segunda tarefa que
+compete com a do SFT. Se fizer isso, meça a língua e a tarefa antes de adotar.
+
 **Como verificar:** rode o benchmark de língua no modelo antes e depois do SFT. Queda
 de dezenas de pontos com a tarefa "ótima" é o sintoma exato.
 
@@ -437,13 +442,16 @@ seu juiz, você não sabe ler o placar dele.
 desloca o que o resto do treino tinha construído.
 
 **Exemplo concreto:** curva de dose medida num 269M: aprendizado puro até ~2,7 épocas;
-primeiros sinais de memorização em ~5 (o 5-shot cai primeiro); valor zera por volta de
-~40. Dois runs que passaram disso (81 e 148 épocas do mesmo dado na fase de decay)
-saíram piores em língua — desastre previsto pela curva e confirmado.
+primeiros sinais de memorização em ~5 (o 5-shot cai primeiro); com muito mais repetição o
+ganho tende a cair. Dois runs com repetição muito maior (81 e 148 épocas do mesmo dado na
+fase de decay) saíram piores em língua — mas também tiveram menos da metade das fichas da
+base de comparação, então a queda não pode ser atribuída só às épocas.
 
 **Regra:** orce as ÉPOCAS do dado raro, não a fração da mistura: fração fixa com budget
-de tempo diferente muda as épocas silenciosamente. Fique ≤ 3 épocas para aprender;
-trate 5+ como zona de memorização; 40+ é desperdício com dano.
+de tempo diferente muda as épocas silenciosamente. Como ponto de partida para dado amplo:
+até ~3 épocas para aprender; a partir de ~5, vigie sinais de memorização; com muito mais
+repetição, espere pouco ganho. Dado de escopo estreito pode tolerar mais repetição — meça em vez de
+aplicar o teto, e compare runs de mesmo volume.
 
 **Como verificar:** acompanhe uma métrica de generalização (few-shot, benchmark de
 língua) junto com o loss durante a fase repetida — a queda do few-shot denuncia a
@@ -601,3 +609,96 @@ termômetro de tendência, não juiz.
 **Como verificar:** compare a variação ponto-a-ponto da acurácia da sonda com a da NLL — a
 NLL é sensivelmente mais suave. Só trate uma mudança de acurácia como real se ela persistir
 por várias sondas ou reaparecer na régua grande.
+
+## Sob DDP, cada processo precisa ler a sua fatia do dado
+
+**Sintoma:** um treino em várias GPUs termina no tempo previsto, com o throughput esperado
+no log, e o total de "fichas vistas" que você anuncia está inflado sem você saber.
+
+**Causa:** o carregador montava a permutação da época com a mesma semente e o mesmo estado em
+todos os processos. Cada GPU recebia o mesmo micro-lote. O contador somava fichas
+*processadas* pelos N processos; as fichas *distintas* eram 1/N disso. O lote efetivo também
+fica N vezes menor do que a taxa de aprendizado supõe.
+
+**Exemplo concreto:** num modelo de 269M treinado em 4 GPUs, a última fase foi anunciada como
+uma passada de 12,31 bi de fichas. Uma auditoria do carregador mostrou 3,08 bi de fichas
+distintas, e o total de treino publicado caiu de 25,4 para 16,2 bi de fichas únicas, com
+correção pública no model card.
+
+**Regra:** sob DDP, a ordem da época se fatia por processo (`ordem[RANK::MUNDO]`), e o
+relatório do run registra `fichas_unicas` e `mundo` separados de `fichas_processadas`. Job
+multi-GPU novo prova a disjunção entre processos antes de um run longo.
+
+**Como verificar:** numa fumaça de 2 processos (custo zero, na máquina local), grave os
+índices de bloco que cada processo leu numa época e confira três coisas: a interseção entre
+os processos é vazia, a união cobre o corpus e, com o mesmo lote, 2 processos fecham a época
+na metade dos passos de 1. Hashes diferentes nos primeiros lotes, sozinhos, não provam isso.
+
+## Antes de comparar no benchmark, procure o benchmark dentro do seu corpus
+
+**Sintoma:** o modelo pequeno aparece à frente de modelos bem maiores num benchmark de
+completar frases, e a vantagem parece grande demais para o tamanho.
+
+**Causa:** corpus grande raspado da web e de documentos pode conter trechos dos próprios
+benchmarks (livros, notícias, Wikipédia). Quando há sobreposição, parte do acerto pode vir
+de ter visto o texto, e a comparação com quem não viu fica enviesada. Sobreposição sozinha
+não prova memorização; ela impede afirmar o contrário.
+
+**Exemplo concreto:** uma varredura por 13-gramas no material de treino de um projeto de
+modelo de 269M achou correspondência para 155 das 2.076 frases de um benchmark de última
+palavra (7,5%). O número que vinha sendo comparado com modelos externos ganhou uma ressalva
+até ser recalculado nas frases sem correspondência.
+
+**Regra:** antes de publicar comparação com modelos externos, varra o corpus de treino pelo
+conjunto de teste (n-gramas, o corpus inteiro, não amostra) e reporte duas colunas: o número
+histórico e o número nos itens sem correspondência detectada.
+
+**Como verificar:** guarde a lista dos itens marcados num arquivo versionado e faça o
+avaliador aceitar `--excluir <lista>`. Compare as duas colunas.
+
+## Defeito de geração: varra a decodificação antes de pedir GPU para treinar
+
+**Sintoma:** o modelo erra de um jeito específico e repetível ao gerar (troca o primeiro
+dígito de um número que está no contexto, entra em laço, inventa), e o plano natural é montar
+um SFT para consertar.
+
+**Causa:** parte dos defeitos de geração mora na decodificação, não nos pesos. Um exemplo de
+mecanismo: a penalidade de repetição pune "repetir ficha recém-vista" — e copiar um número
+do contexto é exatamente repetir fichas recém-vistas. Se o tokenizador quebra o número em
+pedaços, o primeiro pedaço é decidido num passo só, sob essa penalidade.
+
+**Exemplo concreto:** com o contexto trazendo a resposta, uma penalidade de repetição ligada
+favorece trocar justamente os dígitos que deveriam ser copiados. Antes de montar dado de
+treino para "fidelidade a números", vale isolar a penalidade: mesma semente, mesmas
+entradas, penalidade ligada e desligada.
+
+**Regra:** antes de propor treino para defeito de geração, varra uma constante por vez:
+temperatura, penalidade de repetição, top-p, janela da penalidade. Ordem de ataque, do mais
+barato ao mais caro: decodificação → recuperação/contexto → prompt → treino. Melhorar na
+decodificação não elimina a necessidade de treino em todos os casos; ela só a testa primeiro.
+
+**Como verificar:** fixe semente e entradas, mude uma constante, meça o defeito em pelo menos
+10 itens com várias repetições. Se uma constante move muito o defeito, investigue isso antes
+de treinar.
+
+## O template que o servidor aplica pode não ser o que o modelo viu no treino
+
+**Sintoma:** as notas de conversa medidas pela API de chat do servidor não batem com as do
+teste direto pelo prompt montado à mão.
+
+**Causa:** o `chat_template` gravado no cabeçalho do arquivo do modelo é escrito na
+exportação, às vezes à mão. Se ele difere do formato usado para montar os pares de treino
+(rótulos em caixa alta contra minúscula, por exemplo), o modelo recebe outras fichas. Quem
+mede por `/v1/chat/completions` mede o template do servidor, não o do treino.
+
+**Exemplo concreto:** "Usuário:" e "usuário:" viram sequências de fichas diferentes no
+tokenizador. Um modelo pós-treinado só com a forma minúscula recebe, pela API de chat, um
+enquadramento que nunca viu.
+
+**Regra:** confira o template na fonte que gerou o dado de treino (o script que montou os
+pares), não no cabeçalho do arquivo exportado nem no servidor. Para medir, use o endpoint de
+completar texto com o prompt montado igual ao treino.
+
+**Como verificar:** renderize a mesma conversa pelos dois caminhos e compare os IDs de ficha
+do prompt resultante, além dos parâmetros de geração. Respostas diferentes com a mesma
+semente são indício; IDs de ficha diferentes são a prova.
